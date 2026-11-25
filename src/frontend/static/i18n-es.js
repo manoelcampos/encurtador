@@ -15,6 +15,7 @@ const es = {
     MENSAGEM_PADRAO: 'No se pudo acortar la URL.',
     MENSAGEM_URL_INVALIDA: 'Introduce una URL válida que empiece con http:// o https://.',
     MENSAGEM_CONEXAO: 'Error de conexión con el servidor.',
+    MENSAGEM_LIMITE_EXCEDIDO: 'Has hecho demasiadas solicitudes. Espera un poco y vuelve a intentarlo.',
     AVISO_COPIADO: '¡Copiado!',
     AVISO_FALHA_COPIA: 'No se pudo copiar. El enlace fue seleccionado para que lo copies manualmente.',
     ALT_QRCODE: 'Código QR que abre el enlace corto',

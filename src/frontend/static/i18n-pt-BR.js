@@ -14,6 +14,7 @@ const ptBR = {
     MENSAGEM_PADRAO: 'Não foi possível encurtar a URL.',
     MENSAGEM_URL_INVALIDA: 'Informe uma URL válida, começando com http:// ou https://.',
     MENSAGEM_CONEXAO: 'Falha de conexão com o servidor.',
+    MENSAGEM_LIMITE_EXCEDIDO: 'Você fez muitas requisições. Aguarde um pouco e tente de novo.',
     AVISO_COPIADO: 'Copiado!',
     AVISO_FALHA_COPIA: 'Não foi possível copiar. O link foi selecionado para você copiar manualmente.',
     ALT_QRCODE: 'QR Code que abre o link curto',

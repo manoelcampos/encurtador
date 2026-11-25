@@ -63,6 +63,20 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 
 Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://localhost:PORT`) e `DB_PATH` (padrão `encurtador.db`).
 
+### Limite de requisições por IP
+
+Ao passar do limite, a API responde `429` com o header `Retry-After` (segundos) e corpo `{"error": "..."}`.
+Os limites usam janela fixa, em memória (`FixedWindowRateLimiter`, atrás da interface `RateLimiter`), então não são compartilhados entre várias instâncias.
+Valor inválido nestas variáveis impede a API de iniciar, com uma mensagem que diz qual variável está errada.
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `CREATE_RATE_LIMIT` | `30` | Criações (`POST /api/urls`) por IP em cada janela. |
+| `CREATE_RATE_WINDOW_SECONDS` | `3600` | Duração da janela de criação, em segundos. |
+| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code etc.) por IP em cada janela. |
+| `ACCESS_RATE_WINDOW_SECONDS` | `60` | Duração da janela de acesso, em segundos. |
+| `TRUST_PROXY` | `false` | Com `true`, o IP do cliente é o último valor do header `X-Forwarded-For`. Só ligue se a API estiver atrás de um proxy confiável e não puder ser acessada sem ele, senão qualquer cliente forja o próprio IP. Com `false`, usa o IP da conexão. |
+
 ## Princípios de engenharia
 
 - **SOLID:**

@@ -9,6 +9,9 @@ import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { createQrCodeSvg } from './qr-code.ts';
+import { clientIp } from './client-ip.ts';
+import type { RateLimits } from './rate-limit-config.ts';
+import type { RateLimiter } from './rate-limiter.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
 import type { UrlShortenerService } from './url-shortener-service.ts';
 
@@ -20,27 +23,41 @@ const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
 const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
 const QRCODE_ROUTE = new RegExp(`^${QRCODE_PATH.replace(CODE_PARAM, '([^/]+)')}$`);
 const CODE_NOT_FOUND_MESSAGE = 'Código não encontrado.';
+const TOO_MANY_REQUESTS = 429;
+const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de novo mais tarde.';
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    // Sem isso, o navegador esconde o Retry-After do JavaScript de outras origens.
+    'Access-Control-Expose-Headers': 'Retry-After',
 };
 
-/** Cria o servidor HTTP da API. `baseUrl` é usado para montar as URLs curtas devolvidas. */
-export function createApiServer(service: UrlShortenerService, baseUrl: string): Server {
+/**
+ * Cria o servidor HTTP da API. `baseUrl` é usado para montar as URLs curtas devolvidas.
+ * Sem `limits`, não limita as requisições.
+ */
+export function createApiServer(service: UrlShortenerService, baseUrl: string, limits?: RateLimits): Server {
     return createServer((req, res) => {
-        handleRequest(service, baseUrl, req, res).catch(error => sendError(res, error));
+        handleRequest(service, baseUrl, limits, req, res).catch(error => sendError(res, error));
     });
 }
 
-async function handleRequest(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
+async function handleRequest(
+    service: UrlShortenerService, baseUrl: string, limits: RateLimits | undefined, req: IncomingMessage, res: ServerResponse,
+) {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname;
     const isRead = req.method === 'GET' || req.method === 'HEAD';
+    const isShorten = req.method === 'POST' && path === SHORTEN_PATH;
 
     if (req.method === 'OPTIONS') {
         return send(res, 204);
+    }
+
+    if (limits) {
+        enforceLimit(isShorten ? limits.create : limits.access, clientIp(req, limits.trustProxy));
     }
 
     if (req.method === 'GET' && path === OPENAPI_PATH) {
@@ -55,7 +72,7 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return send(res, 200, HTML_HEADERS, SWAGGER_UI_HTML);
     }
 
-    if (req.method === 'POST' && path === SHORTEN_PATH) {
+    if (isShorten) {
         return shorten(service, baseUrl, req, res);
     }
 
@@ -74,6 +91,14 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
     }
 
     throw new HttpError(404, NOT_FOUND_MESSAGE);
+}
+
+/** Lança 429 com Retry-After se o cliente passou do limite. */
+function enforceLimit(limiter: RateLimiter, ip: string) {
+    const { allowed, retryAfterSeconds } = limiter.consume(ip);
+    if (!allowed) {
+        throw new HttpError(TOO_MANY_REQUESTS, TOO_MANY_REQUESTS_MESSAGE, { 'Retry-After': String(retryAfterSeconds) });
+    }
 }
 
 const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).href;
@@ -141,7 +166,7 @@ function parseJson(text: string): { url?: unknown } | undefined {
 
 function sendError(res: ServerResponse, error: unknown) {
     if (error instanceof HttpError) {
-        return sendJson(res, error.status, { error: error.message });
+        return sendJson(res, error.status, { error: error.message }, error.headers);
     }
 
     if (error instanceof InvalidUrlError) {
@@ -152,8 +177,8 @@ function sendError(res: ServerResponse, error: unknown) {
     sendJson(res, 500, { error: 'Erro interno do servidor.' });
 }
 
-function sendJson(res: ServerResponse, status: number, body: object) {
-    send(res, status, { 'Content-Type': 'application/json; charset=utf-8' }, JSON.stringify(body));
+function sendJson(res: ServerResponse, status: number, body: object, headers: Readonly<Record<string, string>> = {}) {
+    send(res, status, { ...headers, 'Content-Type': 'application/json; charset=utf-8' }, JSON.stringify(body));
 }
 
 function send(res: ServerResponse, status: number, headers: Record<string, string> = {}, body?: string) {

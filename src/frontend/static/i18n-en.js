@@ -15,6 +15,7 @@ const en = {
     MENSAGEM_PADRAO: 'Could not shorten the URL.',
     MENSAGEM_URL_INVALIDA: 'Enter a valid URL starting with http:// or https://.',
     MENSAGEM_CONEXAO: 'Could not connect to the server.',
+    MENSAGEM_LIMITE_EXCEDIDO: 'Too many requests. Please wait a moment and try again.',
     AVISO_COPIADO: 'Copied!',
     AVISO_FALHA_COPIA: 'Could not copy. The link was selected so you can copy it manually.',
     ALT_QRCODE: 'QR Code that opens the short link',

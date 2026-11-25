@@ -23,6 +23,17 @@ test('usa a mensagem traduzida para URL inválida (400), e não a da API em port
     }
 });
 
+test('usa a mensagem traduzida de limite excedido (429), sem marcar o campo como inválido', () => {
+    assert.equal(mensagemDaApi({ error: 'Limite de requisições excedido.' }, 429), texto('MENSAGEM_LIMITE_EXCEDIDO'));
+    assert.equal(urlInvalida(429), false);
+    definirIdioma('en');
+    try {
+        assert.equal(mensagemDaApi({}, 429), TRADUCOES.en.MENSAGEM_LIMITE_EXCEDIDO);
+    } finally {
+        definirIdioma(IDIOMA_DO_HTML);
+    }
+});
+
 test('usa a mensagem padrão quando a resposta não traz um erro em texto', () => {
     for (const dados of [{}, null, 'html', { error: 42 }]) {
         assert.equal(mensagemDaApi(dados, 500), MENSAGEM_PADRAO);
