@@ -28,7 +28,7 @@ test('devolve o código e o shortUrl quando a API responde 201', async () => {
         return new Response(JSON.stringify({ code: 'abc', shortUrl: 'https://encurta.do/abc' }), { status: 201 });
     };
 
-    assert.deepEqual(await encurtar(SHORTEN_PATH, URL_LONGA), { code: 'abc', shortUrl: 'https://encurta.do/abc' });
+    assert.deepEqual(await encurtar(SHORTEN_PATH, URL_LONGA), { code: 'abc', shortUrl: 'https://encurta.do/abc', expiresAt: null });
     assert.equal(pedido?.input, SHORTEN_PATH);
     assert.equal(pedido?.init?.method, 'POST');
     assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA });
@@ -74,6 +74,18 @@ test('envia o apelido e lança ApiError 409 com o código ALIAS_TAKEN', async ()
         return true;
     });
     assert.deepEqual(corpo, { url: URL_LONGA, alias: 'promo' });
+});
+
+test('envia a validade escolhida e devolve a data de expiração da API', async () => {
+    const expiresAt = '2026-12-02T12:00:00.000Z';
+    let corpo: unknown;
+    globalThis.fetch = async (_input, init) => {
+        corpo = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ code: 'abc', shortUrl: 'https://encurta.do/abc', expiresAt }), { status: 201 });
+    };
+
+    assert.equal((await encurtar(SHORTEN_PATH, URL_LONGA, '', '7d')).expiresAt, expiresAt);
+    assert.deepEqual(corpo, { url: URL_LONGA, expiresIn: '7d' });
 });
 
 test('os códigos de erro do frontend são os mesmos do backend', () => {

@@ -1,5 +1,6 @@
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from './alias-validator.ts';
 import { QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { EXPIRATION_OPTIONS } from './expiration.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
 import { STATS_DAYS } from './url-shortener-service.ts';
 import { MAX_URL_LENGTH } from './url-validator.ts';
@@ -10,6 +11,11 @@ const errorResponse = (description: string) => ({
     description,
     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
 });
+
+const LINK_EXPIRED_RESPONSE = {
+    description: 'O link passou do prazo de validade (`code` = `LINK_EXPIRED`).',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+};
 
 const TOO_MANY_REQUESTS_RESPONSE = {
     ...errorResponse('Limite de requisições por IP excedido'),
@@ -43,7 +49,8 @@ export function createOpenApiSpec(baseUrl: string) {
                         },
                         400: {
                             description: 'JSON ou URL inválidos, URL recusada (próprio encurtador, rede local ou maliciosa) '
-                                + 'ou apelido fora do formato. Quando a URL ou o apelido são recusados, `code` diz o motivo.',
+                                + 'apelido fora do formato ou prazo de validade inválido. Quando a URL, o apelido ou o prazo são recusados, '
+                                + '`code` diz o motivo.',
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
                         },
                         409: {
@@ -71,6 +78,7 @@ export function createOpenApiSpec(baseUrl: string) {
                             content: { 'image/svg+xml': { schema: { type: 'string' } } },
                         },
                         404: errorResponse('Código não encontrado'),
+                        410: LINK_EXPIRED_RESPONSE,
                         429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
@@ -79,7 +87,7 @@ export function createOpenApiSpec(baseUrl: string) {
                 get: {
                     summary: 'Estatísticas de cliques do link curto',
                     description: `Total de cliques desde a criação e cliques por dia (UTC) nos últimos ${STATS_DAYS} dias, `
-                        + 'contando hoje. Dias sem cliques não aparecem.',
+                        + 'contando hoje. Dias sem cliques não aparecem. Continua disponível depois que o link expira.',
                     parameters: [CODE_PARAMETER],
                     responses: {
                         200: {
@@ -94,7 +102,7 @@ export function createOpenApiSpec(baseUrl: string) {
             '/{code}': {
                 get: {
                     summary: 'Redireciona para a URL original',
-                    description: 'Cada GET que redireciona conta como um clique (HEAD não conta). '
+                    description: 'Cada GET que redireciona conta como um clique (HEAD não conta). Link expirado não conta clique. '
                         + 'O Swagger UI segue o redirecionamento, então teste esta rota direto no navegador.',
                     parameters: [CODE_PARAMETER],
                     responses: {
@@ -103,6 +111,7 @@ export function createOpenApiSpec(baseUrl: string) {
                             headers: { Location: { schema: { type: 'string', format: 'uri' } } },
                         },
                         404: errorResponse('Código não encontrado'),
+                        410: LINK_EXPIRED_RESPONSE,
                         429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
@@ -123,6 +132,13 @@ export function createOpenApiSpec(baseUrl: string) {
                             maxLength: ALIAS_MAX_LENGTH,
                             example: 'promo-natal',
                         },
+                        expiresIn: {
+                            type: 'string',
+                            description: 'Prazo de validade opcional, contado a partir da criação (h = horas, d = dias). '
+                                + 'Sem ele, o link não expira. Depois do prazo, o link responde 410.',
+                            enum: Object.keys(EXPIRATION_OPTIONS),
+                            example: '7d',
+                        },
                     },
                 },
                 ShortenResponse: {
@@ -130,6 +146,12 @@ export function createOpenApiSpec(baseUrl: string) {
                     properties: {
                         code: { type: 'string', example: 'AbC234xYz' },
                         shortUrl: { type: 'string', format: 'uri', example: `${baseUrl}AbC234xYz` },
+                        expiresAt: {
+                            type: ['string', 'null'],
+                            format: 'date-time',
+                            description: 'Data de expiração em UTC, ou null se o link não expira.',
+                            example: '2026-12-02T12:00:00.000Z',
+                        },
                     },
                 },
                 ClickStats: {

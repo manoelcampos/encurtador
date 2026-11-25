@@ -34,7 +34,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste). Colunas novas em tabelas existentes (como `urls.expires_at`) são adicionadas ao abrir, com `ALTER TABLE ... ADD COLUMN` só se o `PRAGMA table_info` mostrar que faltam (migração idempotente; há teste com o esquema anterior).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
@@ -53,12 +53,12 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional"}`. Devolve `201` com `{"code", "shortUrl"}`. Veja "Apelidos". |
-| `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), ou `404`. |
+| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional"}`. Devolve `201` com `{"code", "shortUrl", "expiresAt"}`. Veja "Apelidos" e "Prazo de validade". |
+| `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), `404`, ou `410` se o link expirou. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
-| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. Só `GET` conta como clique. |
+| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou. Só `GET` conta como clique. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
@@ -82,6 +82,14 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - Palavras reservadas (`RESERVED_ALIASES`): o primeiro segmento de cada rota da aplicação (derivado de `api-paths.ts` e `static-files.ts`, ex.: `api` e `static`; um teste percorre as constantes de rota e garante que todas estão reservadas) e alguns nomes que confundiriam quem recebe o link (`admin`, `www` etc.).
 - Apelido em uso ou reservado: `409` com `code` `ALIAS_TAKEN` (reservado é tratado como "já usado pela aplicação"). Formato inválido: `400` com `INVALID_ALIAS`. A gravação usa o `add` do repositório, que falha se o código já existir, então dois pedidos simultâneos com o mesmo apelido dão um `201` e um `409`.
 
+### Prazo de validade
+
+- O campo opcional `expiresIn` do `POST /api/urls` aceita só os valores de `EXPIRATION_OPTIONS` em `expiration.ts` (`1h`, `1d`, `7d`, `30d`). Uma lista fixa evita problemas de fuso e datas absurdas; por isso não há campo com data absoluta. Outro valor (inclusive texto vazio) dá `400` com `INVALID_EXPIRATION`. Sem o campo (ou `null`), o link não expira.
+- O prazo é convertido em `expires_at` (ISO 8601 em UTC, coluna `TEXT NULL` em `urls`) pelo relógio injetado no `UrlShortenerService` (opção `now`). A resposta traz `expiresAt` (ou `null`).
+- A partir de `expires_at`, `GET`/`HEAD /:code` e o QR Code respondem `410 Gone` com `{"error", "code": "LINK_EXPIRED"}`, e nenhum clique é contado. `/stats` continua funcionando, para o dono ver os números depois do prazo.
+- O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado.
+- O `<select>` "Validade" da interface é montado em `home-page.ts` com as chaves de `EXPIRATION_OPTIONS`; cada opção tem a tradução `VALIDADE_<VALOR>` (há teste). A data de expiração aparece abaixo do link curto, formatada no idioma atual com `Intl.DateTimeFormat`.
+
 ### URLs recusadas
 
 O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409` para `ALIAS_TAKEN` e `503` para `ALIAS_UNAVAILABLE`). O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
@@ -95,6 +103,8 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `INVALID_ALIAS` | Apelido fora do formato (veja "Apelidos"). |
 | `ALIAS_TAKEN` | Apelido em uso (ignorando maiúsculas) ou reservado. Status `409`. |
 | `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
+| `INVALID_EXPIRATION` | `expiresIn` fora da lista aceita (veja "Prazo de validade"). |
+| `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code` e do QR Code de um link expirado. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.

@@ -29,7 +29,7 @@ test('abre banco da versão anterior, sem a tabela de cliques, e passa a contar'
 
     const repository = new SqliteUrlRepository(path);
     try {
-        assert.equal(await repository.find('antigo'), 'https://example.com/');
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
         assert.equal(await repository.countClicks('antigo'), 0);
 
         await repository.addClick('antigo', '2026-11-25');
@@ -47,7 +47,7 @@ test('recusa código igual a outro ignorando maiúsculas', async () => {
     assert.equal(repository.uniqueIgnoringCase, true);
     assert.equal(await repository.add('AbC', 'https://um.com/'), true);
     assert.equal(await repository.add('abc', 'https://dois.com/'), false);
-    assert.equal(await repository.find('AbC'), 'https://um.com/');
+    assert.deepEqual(await repository.find('AbC'), { url: 'https://um.com/', expiresAt: null });
 });
 
 test('banco antigo com códigos que só diferem em maiúsculas abre sem quebrar e avisa no log', async (t) => {
@@ -63,10 +63,30 @@ test('banco antigo com códigos que só diferem em maiúsculas abre sem quebrar 
     try {
         assert.equal(repository.uniqueIgnoringCase, false);
         assert.equal(warn.mock.callCount(), 1);
-        assert.equal(await repository.find('antigo'), 'https://example.com/');
-        assert.equal(await repository.find('ANTIGO'), 'https://outro.example/');
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
+        assert.deepEqual(await repository.find('ANTIGO'), { url: 'https://outro.example/', expiresAt: null });
     } finally {
         repository.close();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('abre banco antigo sem a coluna expires_at, adiciona a coluna e grava o prazo; reabrir não falha', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'encurtador-'));
+    const path = join(dir, 'sem-validade.db');
+    createOldDatabase(path);
+    const expiresAt = '2026-12-02T12:00:00.000Z';
+
+    try {
+        const repository = new SqliteUrlRepository(path);
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
+        assert.equal(await repository.add('novo', 'https://novo.example/', expiresAt), true);
+        repository.close();
+
+        const reopened = new SqliteUrlRepository(path);
+        assert.deepEqual(await reopened.find('novo'), { url: 'https://novo.example/', expiresAt });
+        reopened.close();
+    } finally {
         await rm(dir, { recursive: true, force: true });
     }
 });

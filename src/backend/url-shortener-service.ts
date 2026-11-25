@@ -2,6 +2,7 @@ import { type ClickRepository, type DailyClicks, NO_CLICK_REPOSITORY } from '../
 import type { UrlRepository } from '../data/url-repository.ts';
 import { ALIAS_PATTERN, aliasTakenError, aliasUnavailableError, validateAlias } from './alias-validator.ts';
 import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
+import { expirationDate, isExpired } from './expiration.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
 import { normalizedHostname, validateDestination, validateUrl } from './url-validator.ts';
@@ -20,13 +21,18 @@ export interface UrlShortenerOptions {
     threatChecker?: UrlThreatChecker;
     /** Onde os cliques são contados. Sem ele, nenhum clique é registrado. */
     clicks?: ClickRepository;
-    /** Relógio usado para registrar os cliques; injetável para testar datas. */
+    /** Relógio usado nos cliques e no prazo de validade; injetável para testar datas. */
     now?: () => Date;
 }
 
-/** Link encontrado: o código como está gravado e a URL original. */
-export interface StoredLink {
+/** Link criado: o código e a data de expiração (ISO 8601 em UTC), ou null se não expira. */
+export interface ShortenedLink {
     code: string;
+    expiresAt: string | null;
+}
+
+/** Link encontrado: o código como está gravado, a URL original e a data de expiração. */
+export interface StoredLink extends ShortenedLink {
     url: string;
 }
 
@@ -56,19 +62,22 @@ export class UrlShortenerService {
     }
 
     /**
-     * Valida a URL, grava com o apelido (se informado) ou com um código novo e retorna o código.
+     * Valida a URL, grava com o apelido (se informado) ou com um código novo e retorna o código e a expiração.
      * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.
+     * `expiresInInput` é uma das EXPIRATION_OPTIONS (ou ausente, sem prazo); outro valor lança INVALID_EXPIRATION.
      */
-    async shorten(input: unknown, aliasInput?: unknown): Promise<string> {
+    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown): Promise<ShortenedLink> {
         const alias = validateAlias(aliasInput);
+        const expiresAt = expirationDate(expiresInInput, this.#now());
         const url = await this.#validate(input);
-        if (alias !== undefined) {
-            return this.#addAlias(alias, url);
-        }
+        const code = alias === undefined ? await this.#addGenerated(url, expiresAt) : await this.#addAlias(alias, url, expiresAt);
+        return { code, expiresAt };
+    }
 
+    async #addGenerated(url: string, expiresAt: string | null): Promise<string> {
         for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
             const code = this.#generateCode();
-            if (await this.#repository.add(code, url)) {
+            if (await this.#repository.add(code, url, expiresAt)) {
                 return code;
             }
         }
@@ -77,20 +86,31 @@ export class UrlShortenerService {
     }
 
     /** O `add` falha se o código já existir, então não há corrida entre checar e gravar. */
-    async #addAlias(alias: string, url: string): Promise<string> {
+    async #addAlias(alias: string, url: string, expiresAt: string | null): Promise<string> {
         if (!this.#repository.uniqueIgnoringCase) {
             throw aliasUnavailableError();
         }
 
-        if (!await this.#repository.add(alias, url)) {
+        if (!await this.#repository.add(alias, url, expiresAt)) {
             throw aliasTakenError();
         }
 
         return alias;
     }
 
+    /** URL do código para redirecionar, sem contar clique. Lança LINK_EXPIRED se o link expirou. */
     async resolve(code: string): Promise<string | undefined> {
-        return (await this.find(code))?.url;
+        return (await this.findActive(code))?.url;
+    }
+
+    /** Como o `find`, mas lança InvalidUrlError com LINK_EXPIRED se o link passou do prazo de validade. */
+    async findActive(code: string): Promise<StoredLink | undefined> {
+        const link = await this.find(code);
+        if (link && isExpired(link.expiresAt, this.#now())) {
+            throw new InvalidUrlError('Este link expirou.', UrlErrorCode.LINK_EXPIRED);
+        }
+
+        return link;
     }
 
     /**
@@ -98,19 +118,22 @@ export class UrlShortenerService {
      * depois de passar para minúsculas, busca em minúsculas, pois os apelidos são gravados assim.
      */
     async find(code: string): Promise<StoredLink | undefined> {
-        const url = await this.#repository.find(code);
-        if (url) {
-            return { code, url };
+        const stored = await this.#repository.find(code);
+        if (stored) {
+            return { code, ...stored };
         }
 
         const lower = code.toLowerCase();
-        const aliasUrl = lower !== code && ALIAS_PATTERN.test(lower) ? await this.#repository.find(lower) : undefined;
-        return aliasUrl ? { code: lower, url: aliasUrl } : undefined;
+        const aliasStored = lower !== code && ALIAS_PATTERN.test(lower) ? await this.#repository.find(lower) : undefined;
+        return aliasStored ? { code: lower, ...aliasStored } : undefined;
     }
 
-    /** Resolve o código para redirecionar e registra o clique. Falha ao registrar não impede o redirecionamento. */
+    /**
+     * Resolve o código para redirecionar e registra o clique. Falha ao registrar não impede o redirecionamento.
+     * Link expirado lança LINK_EXPIRED e não conta clique.
+     */
     async visit(code: string): Promise<string | undefined> {
-        const link = await this.find(code);
+        const link = await this.findActive(code);
         if (link) {
             await this.#recordClick(link.code);
         }

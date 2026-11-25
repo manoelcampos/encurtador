@@ -30,9 +30,11 @@ const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de no
 const BAD_REQUEST = 400;
 const CONFLICT = 409;
 const SERVICE_UNAVAILABLE = 503;
+const GONE = 410;
 const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
     [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
     [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
+    [UrlErrorCode.LINK_EXPIRED]: GONE,
 };
 
 // API pública e aberta: qualquer origem pode chamá-la.
@@ -119,13 +121,14 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const code = await service.shorten(body?.url, body?.alias);
-    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl) });
+    const { code, expiresAt } = await service.shorten(body?.url, body?.alias, body?.expiresIn);
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), expiresAt });
 }
 
+/** Link expirado responde 410 (LINK_EXPIRED): o QR Code levaria a um link que não abre mais. */
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
     // O QR Code leva o código gravado (ex.: o apelido em minúsculas), não o texto pedido.
-    const { code: storedCode } = requireCode(await service.find(code));
+    const { code: storedCode } = requireCode(await service.findActive(code));
     send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(storedCode, baseUrl)));
 }
 
@@ -175,7 +178,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseJson(text: string): { url?: unknown; alias?: unknown } | undefined {
+function parseJson(text: string): { url?: unknown; alias?: unknown; expiresIn?: unknown } | undefined {
     try {
         const value = JSON.parse(text);
         return typeof value === 'object' && value !== null ? value : undefined;

@@ -31,26 +31,26 @@ const rejectsWith = (promise: Promise<unknown>, code: UrlErrorCode) =>
 
 test('encurta e resolve uma URL', async () => {
     const service = createService();
-    const code = await service.shorten('https://example.com');
+    const { code } = await service.shorten('https://example.com');
     assert.equal(await service.resolve(code), 'https://example.com/');
     assert.equal(await service.resolve('inexistente'), undefined);
 });
 
 test('gera outro código quando há colisão', async () => {
     const service = createService({ generateCode: sequence('a', 'a', 'b') });
-    assert.equal(await service.shorten('https://um.com'), 'a');
-    assert.equal(await service.shorten('https://dois.com'), 'b');
+    assert.equal((await service.shorten('https://um.com')).code, 'a');
+    assert.equal((await service.shorten('https://dois.com')).code, 'b');
     assert.equal(await service.resolve('a'), 'https://um.com/');
 });
 
 test('sem apelido continua gerando o código', async () => {
     const service = createService({ generateCode: sequence('Gerado') });
-    assert.equal(await service.shorten('https://um.com', undefined), 'Gerado');
+    assert.equal((await service.shorten('https://um.com', undefined)).code, 'Gerado');
 });
 
 test('apelido é gravado em minúsculas e os cliques e estatísticas vão para ele', async () => {
     const service = createService({ generateCode: () => assert.fail('não deve gerar código') });
-    assert.equal(await service.shorten('https://um.com', 'Promo'), 'promo');
+    assert.equal((await service.shorten('https://um.com', 'Promo')).code, 'promo');
     assert.equal(await service.visit('PROMO'), 'https://um.com/');
     assert.equal((await service.stats('Promo'))?.code, 'promo');
     assert.equal((await service.stats('promo'))?.totalClicks, 1);
@@ -83,7 +83,7 @@ test('apelido igual a um código gerado em outra caixa dá ALIAS_TAKEN', async (
 test('código gerado igual a um apelido em outra caixa é trocado por outro', async () => {
     const service = createService({ generateCode: sequence('PROMO', 'Outro') });
     await service.shorten('https://apelido.com', 'promo');
-    assert.equal(await service.shorten('https://gerado.com'), 'Outro');
+    assert.equal((await service.shorten('https://gerado.com')).code, 'Outro');
     assert.equal(await service.resolve('PROMO'), 'https://apelido.com/');
 });
 
@@ -92,7 +92,7 @@ test('repositório sem unicidade ignorando maiúsculas recusa apelidos com ALIAS
     const legacyRepository = { uniqueIgnoringCase: false, add: sqlite.add.bind(sqlite), find: sqlite.find.bind(sqlite) };
     const service = new UrlShortenerService(legacyRepository, BASE_URL, { generateCode: sequence('Gerado') });
     await rejectsWith(service.shorten('https://um.com', 'promo'), UrlErrorCode.ALIAS_UNAVAILABLE);
-    assert.equal(await service.shorten('https://um.com'), 'Gerado');
+    assert.equal((await service.shorten('https://um.com')).code, 'Gerado');
 });
 
 test('falha após muitas colisões seguidas', async () => {
@@ -161,7 +161,7 @@ function fakeClock(start: string) {
 test('cada visita aumenta o contador e os cliques são agrupados por dia em UTC', async () => {
     const clock = fakeClock('2026-11-24T23:59:59Z');
     const service = createService({ now: clock.now });
-    const code = await service.shorten('https://example.com/');
+    const { code } = await service.shorten('https://example.com/');
 
     await service.visit(code);
     clock.set('2026-11-25T00:00:00Z');
@@ -178,7 +178,7 @@ test('cada visita aumenta o contador e os cliques são agrupados por dia em UTC'
 test(`clicksByDay só mostra os últimos ${STATS_DAYS} dias, mas o total conta todos`, async () => {
     const clock = fakeClock('2026-10-26T12:00:00Z');
     const service = createService({ now: clock.now });
-    const code = await service.shorten('https://example.com/');
+    const { code } = await service.shorten('https://example.com/');
     await service.visit(code);
     clock.set('2026-10-27T00:00:00Z');
     await service.visit(code);
@@ -191,7 +191,7 @@ test(`clicksByDay só mostra os últimos ${STATS_DAYS} dias, mas o total conta t
 
 test('resolve não conta clique e código inexistente não tem estatísticas', async () => {
     const service = createService();
-    const code = await service.shorten('https://example.com/');
+    const { code } = await service.shorten('https://example.com/');
     await service.resolve(code);
     assert.equal((await service.stats(code))?.totalClicks, 0);
     assert.equal(await service.stats('inexistente'), undefined);
@@ -208,7 +208,51 @@ test('falha ao registrar o clique não impede o redirecionamento', async (t) => 
     };
 
     const service = createService({ clicks });
-    const code = await service.shorten('https://example.com/');
+    const { code } = await service.shorten('https://example.com/');
     assert.equal(await service.visit(code), 'https://example.com/');
     assert.equal(errorLog.mock.callCount(), 1);
+});
+
+test('link com prazo redireciona antes de expirar e lança LINK_EXPIRED depois, sem contar clique', async () => {
+    const clock = fakeClock('2026-11-25T12:00:00Z');
+    const service = createService({ now: clock.now });
+    const { code, expiresAt } = await service.shorten('https://example.com/', undefined, '1h');
+    assert.equal(expiresAt, '2026-11-25T13:00:00.000Z');
+
+    clock.set('2026-11-25T12:59:59Z');
+    assert.equal(await service.visit(code), 'https://example.com/');
+
+    clock.set('2026-11-25T13:00:00Z');
+    await rejectsWith(service.visit(code), UrlErrorCode.LINK_EXPIRED);
+    await rejectsWith(service.resolve(code), UrlErrorCode.LINK_EXPIRED);
+    await rejectsWith(service.findActive(code), UrlErrorCode.LINK_EXPIRED);
+    assert.equal((await service.stats(code))?.totalClicks, 1);
+});
+
+test('link sem prazo não expira e devolve expiresAt null', async () => {
+    const clock = fakeClock('2026-11-25T12:00:00Z');
+    const service = createService({ now: clock.now });
+    const { code, expiresAt } = await service.shorten('https://example.com/', undefined, null);
+    assert.equal(expiresAt, null);
+
+    clock.set('2126-11-25T12:00:00Z');
+    assert.equal(await service.visit(code), 'https://example.com/');
+});
+
+test('apelido de link expirado continua ocupado', async () => {
+    const clock = fakeClock('2026-11-25T12:00:00Z');
+    const service = createService({ now: clock.now });
+    await service.shorten('https://um.com', 'promo', '1d');
+    clock.set('2026-12-25T12:00:00Z');
+    await rejectsWith(service.shorten('https://dois.com', 'promo'), UrlErrorCode.ALIAS_TAKEN);
+});
+
+test('prazo fora da lista lança INVALID_EXPIRATION antes de consultar o provedor externo', async () => {
+    const checked: string[] = [];
+    const service = createService({ threatChecker: fakeChecker(checked) });
+    for (const expiresIn of ['2h', '', '1H', 7, 'constructor', { d: 1 }]) {
+        await rejectsWith(service.shorten('https://example.com/', undefined, expiresIn), UrlErrorCode.INVALID_EXPIRATION);
+    }
+
+    assert.deepEqual(checked, []);
 });
