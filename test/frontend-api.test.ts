@@ -3,7 +3,10 @@ import { afterEach, test } from 'node:test';
 import { SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { ApiError, encurtar } from '../src/frontend/static/api.js';
 import { mensagemDeFalha } from '../src/frontend/static/logic.js';
-import { MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
+import { texto } from '../src/frontend/static/messages.js';
+
+const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
+const MENSAGEM_CONEXAO = texto('MENSAGEM_CONEXAO');
 
 const URL_LONGA = 'https://example.com/pagina';
 const fetchOriginal = globalThis.fetch;
@@ -30,12 +33,12 @@ test('devolve o código e o shortUrl quando a API responde 201', async () => {
     assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA });
 });
 
-test('lança ApiError com status 400 e a mensagem da API', async () => {
+test('lança ApiError com status 400 e a mensagem traduzida de URL inválida', async () => {
     responder(400, JSON.stringify({ error: 'URL inválida.' }));
     await assert.rejects(encurtar(SHORTEN_PATH, 'x'), (error: unknown) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 400);
-        assert.equal(error.message, 'URL inválida.');
+        assert.equal(error.message, texto('MENSAGEM_URL_INVALIDA'));
         return true;
     });
 });

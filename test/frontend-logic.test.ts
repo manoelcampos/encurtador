@@ -1,15 +1,31 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
-import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
+import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
+
+const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
+const MENSAGEM_CONEXAO = texto('MENSAGEM_CONEXAO');
+const AVISO_COPIADO = texto('AVISO_COPIADO');
+const AVISO_FALHA_COPIA = texto('AVISO_FALHA_COPIA');
+const ALT_QRCODE = texto('ALT_QRCODE');
 
 test('usa a mensagem de erro da API quando ela vem no corpo', () => {
-    assert.equal(mensagemDaApi({ error: 'URL inválida.' }), 'URL inválida.');
+    assert.equal(mensagemDaApi({ error: 'Corpo muito grande.' }, 413), 'Corpo muito grande.');
+});
+
+test('usa a mensagem traduzida para URL inválida (400), e não a da API em português', () => {
+    assert.equal(mensagemDaApi({ error: 'URL inválida.' }, 400), texto('MENSAGEM_URL_INVALIDA'));
+    definirIdioma('es');
+    try {
+        assert.equal(mensagemDaApi({ error: 'URL inválida.' }, 400), TRADUCOES.es.MENSAGEM_URL_INVALIDA);
+    } finally {
+        definirIdioma(IDIOMA_DO_HTML);
+    }
 });
 
 test('usa a mensagem padrão quando a resposta não traz um erro em texto', () => {
     for (const dados of [{}, null, 'html', { error: 42 }]) {
-        assert.equal(mensagemDaApi(dados), MENSAGEM_PADRAO);
+        assert.equal(mensagemDaApi(dados, 500), MENSAGEM_PADRAO);
     }
 });
 

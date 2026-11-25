@@ -1,5 +1,5 @@
 // Regras da página sem DOM, testáveis com node --test.
-import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from './messages.js';
+import { texto } from './messages.js';
 
 const STATUS_URL_INVALIDA = 400;
 /** Marcador do código na rota do QR Code. Deve ser igual ao CODE_PARAM do backend. */
@@ -8,13 +8,17 @@ const PREFIXO_ARQUIVO_QRCODE = 'qrcode-';
 const EXTENSAO_QRCODE = '.svg';
 
 /**
- * Mensagem de erro a partir do corpo da resposta da API.
+ * Mensagem de erro a partir da resposta da API.
+ * A API só responde em português; para URL inválida, usa o texto traduzido do frontend.
  * @param {unknown} dados corpo JSON da resposta, ou `{}` se não era JSON
+ * @param {number} status código HTTP da resposta
  * @returns {string}
  */
-export function mensagemDaApi(dados) {
+export function mensagemDaApi(dados, status) {
+    if (urlInvalida(status)) return texto('MENSAGEM_URL_INVALIDA');
+
     const erro = typeof dados === 'object' && dados !== null && 'error' in dados ? dados.error : undefined;
-    return typeof erro === 'string' ? erro : MENSAGEM_PADRAO;
+    return typeof erro === 'string' ? erro : texto('MENSAGEM_PADRAO');
 }
 
 /**
@@ -24,8 +28,8 @@ export function mensagemDaApi(dados) {
  */
 export function mensagemDeFalha(error) {
     // O fetch lança TypeError quando não consegue falar com o servidor.
-    if (error instanceof TypeError) return MENSAGEM_CONEXAO;
-    return error instanceof Error ? error.message : MENSAGEM_PADRAO;
+    if (error instanceof TypeError) return texto('MENSAGEM_CONEXAO');
+    return error instanceof Error ? error.message : texto('MENSAGEM_PADRAO');
 }
 
 /**
@@ -47,7 +51,7 @@ export function linkMudou(copiado, atual) {
 
 /** @param {boolean} sucesso */
 export function avisoDeCopia(sucesso) {
-    return sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA;
+    return sucesso ? texto('AVISO_COPIADO') : texto('AVISO_FALHA_COPIA');
 }
 
 /**
@@ -107,6 +111,6 @@ export function qrCodeDoLink(rotaQrCode, { code, shortUrl }) {
     return {
         src: rotaQrCode.replace(MARCADOR_CODIGO, encodeURIComponent(code)),
         nomeArquivo: PREFIXO_ARQUIVO_QRCODE + code + EXTENSAO_QRCODE,
-        alt: `${ALT_QRCODE} ${shortUrl}`,
+        alt: `${texto('ALT_QRCODE')} ${shortUrl}`,
     };
 }

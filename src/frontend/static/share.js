@@ -1,12 +1,10 @@
 // Regras de compartilhamento do link curto, sem DOM, testáveis com node --test.
-import {
-    COMPARTILHAR_EMAIL, COMPARTILHAR_TELEGRAM, COMPARTILHAR_WHATSAPP, COMPARTILHAR_X, TITULO_COMPARTILHAMENTO,
-} from './messages.js';
+import { texto } from './messages.js';
 
 /**
  * Rede para onde o link pode ser compartilhado sem a Web Share API.
  * @typedef {object} Rede
- * @property {string} rotulo nome acessível do link
+ * @property {import('./messages.js').ChaveDeTexto} rotulo chave do texto com o nome acessível do link
  * @property {(url: string, titulo: string) => string} endereco monta o endereço de compartilhamento
  */
 
@@ -15,11 +13,11 @@ import {
  * @type {readonly Rede[]}
  */
 export const REDES = Object.freeze([
-    { rotulo: COMPARTILHAR_WHATSAPP, endereco: url => `https://wa.me/?text=${encodeURIComponent(url)}` },
-    { rotulo: COMPARTILHAR_TELEGRAM, endereco: url => `https://t.me/share/url?url=${encodeURIComponent(url)}` },
-    { rotulo: COMPARTILHAR_X, endereco: url => `https://x.com/intent/tweet?url=${encodeURIComponent(url)}` },
+    { rotulo: 'COMPARTILHAR_WHATSAPP', endereco: url => `https://wa.me/?text=${encodeURIComponent(url)}` },
+    { rotulo: 'COMPARTILHAR_TELEGRAM', endereco: url => `https://t.me/share/url?url=${encodeURIComponent(url)}` },
+    { rotulo: 'COMPARTILHAR_X', endereco: url => `https://x.com/intent/tweet?url=${encodeURIComponent(url)}` },
     {
-        rotulo: COMPARTILHAR_EMAIL,
+        rotulo: 'COMPARTILHAR_EMAIL',
         endereco: (url, titulo) => `mailto:?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(url)}`,
     },
 ]);
@@ -41,8 +39,8 @@ const PROTOCOLO_WEB = /^https?:/;
  */
 export function linksDeCompartilhamento(url, redes = REDES) {
     return redes.map(({ rotulo, endereco }) => {
-        const href = endereco(url, TITULO_COMPARTILHAMENTO);
-        return { rotulo, href, externo: PROTOCOLO_WEB.test(href) };
+        const href = endereco(url, texto('TITULO_COMPARTILHAMENTO'));
+        return { rotulo: texto(rotulo), href, externo: PROTOCOLO_WEB.test(href) };
     });
 }
 
@@ -59,7 +57,7 @@ export async function compartilhar(url, share) {
     if (!share) return RESULTADO.ALTERNATIVO;
 
     try {
-        await share({ url, title: TITULO_COMPARTILHAMENTO });
+        await share({ url, title: texto('TITULO_COMPARTILHAMENTO') });
         return RESULTADO.NATIVO;
     } catch (error) {
         // AbortError: o usuário fechou o menu, o que não é erro.

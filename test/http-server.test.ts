@@ -128,14 +128,16 @@ test('serve a interface web na raiz, apontando para a API de encurtar e para o J
     assert.match(res.headers.get('content-type') ?? '', /text\/html/);
 
     const html = await res.text();
-    assert.match(html, /<label for="url">/);
+    assert.match(html, /<label for="url"[ >]/);
+    assert.match(html, /<label for="idioma"[ >]/);
+    assert.match(html, /<select id="idioma">/);
     assert.match(html, new RegExp(`data-api="${SHORTEN_PATH}"`));
     assert.match(html, new RegExp(`<script type="module" src="${STATIC_PATH}main\\.js"></script>`));
 });
 
 test('a interface web tem botão para copiar o link curto', async () => {
     const html = await (await fetch(`${apiUrl}/`)).text();
-    assert.match(html, /<button type="button" id="copiar">Copiar link<\/button>/);
+    assert.match(html, /<button type="button" id="copiar" data-i18n="BOTAO_COPIAR">Copiar link<\/button>/);
     assert.match(html, /<p id="aviso" role="status"><\/p>/);
     assert.match(html, /id="compartilhar"/);
     assert.match(html, /id="redes"/);
