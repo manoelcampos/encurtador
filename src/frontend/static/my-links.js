@@ -10,7 +10,7 @@ const CODIGO_TOKEN_INVALIDO = 'INVALID_MANAGE_TOKEN';
 
 /**
  * Link guardado neste navegador.
- * @typedef {import('./logic.js').LinkCurto & { createdAt: string }} LinkGuardado
+ * @typedef {Omit<import('./logic.js').LinkCurto, 'url'> & { createdAt: string }} LinkGuardado
  */
 
 /**

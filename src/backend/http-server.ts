@@ -156,8 +156,8 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const { code, expiresAt, manageToken } = await service.shorten(body?.url, body?.alias, body?.expiresIn);
-    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), expiresAt, manageToken });
+    const { code, url, expiresAt, manageToken } = await service.shorten(body?.url, body?.alias, body?.expiresIn, body?.removeTracking);
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), url, expiresAt, manageToken });
 }
 
 /** Apaga o link com o token de gestão do header `Authorization: Bearer <token>`. */
@@ -238,7 +238,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseJson(text: string): { url?: unknown; alias?: unknown; expiresIn?: unknown } | undefined {
+function parseJson(text: string): { url?: unknown; alias?: unknown; expiresIn?: unknown; removeTracking?: unknown } | undefined {
     try {
         const value = JSON.parse(text);
         return typeof value === 'object' && value !== null ? value : undefined;

@@ -286,3 +286,30 @@ test('delete recusa link antigo, criado sem token', async () => {
     await repository.add('antigo', 'https://example.com/');
     await rejectsWith(new UrlShortenerService(repository, BASE_URL).delete('antigo', 'qualquer'), UrlErrorCode.INVALID_MANAGE_TOKEN);
 });
+
+test('com removeTracking, grava e devolve a URL sem rastreamento', async () => {
+    const service = createService();
+    const link = await service.shorten('https://a.com/?utm_source=x&id=1', undefined, undefined, true);
+    assert.equal(link.url, 'https://a.com/?id=1');
+    assert.equal(await service.resolve(link.code), 'https://a.com/?id=1');
+});
+
+test('sem removeTracking (ausente ou false), a URL fica com o rastreamento', async () => {
+    const service = createService();
+    assert.equal((await service.shorten('https://a.com/?utm_source=x')).url, 'https://a.com/?utm_source=x');
+    assert.equal((await service.shorten('https://a.com/?utm_source=x', undefined, undefined, false)).url, 'https://a.com/?utm_source=x');
+});
+
+test('removeTracking que não é boolean é recusado sem gravar nada', async () => {
+    const service = createService({ generateCode: () => 'Gerado' });
+    await rejectsWith(service.shorten('https://a.com/', undefined, undefined, 'true'), UrlErrorCode.INVALID_REMOVE_TRACKING);
+    assert.equal(await service.find('Gerado'), undefined);
+});
+
+test('a limpeza vem antes do próprio domínio e da consulta de ameaças, que veem a URL gravada', async () => {
+    const checked: string[] = [];
+    const service = createService({ threatChecker: fakeChecker(checked) });
+    await rejectsWith(service.shorten(`${MALICIOUS_URL}?utm_source=x`, undefined, undefined, true), UrlErrorCode.MALICIOUS_URL);
+    await rejectsWith(service.shorten(`${BASE_URL}?fbclid=x`, undefined, undefined, true), UrlErrorCode.OWN_DOMAIN);
+    assert.deepEqual(checked, [MALICIOUS_URL]);
+});

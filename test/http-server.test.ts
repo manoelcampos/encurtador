@@ -93,7 +93,7 @@ test('apelido livre cria o link, que redireciona sem diferenciar maiúsculas', a
     const res = await postAlias('Promo-Natal');
     assert.equal(res.status, 201);
     const { manageToken, ...link } = await res.json();
-    assert.deepEqual(link, { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, expiresAt: null });
+    assert.deepEqual(link, { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, url: 'https://example.com/promo', expiresAt: null });
     assert.equal(typeof manageToken, 'string');
 
     for (const path of ['/promo-natal', '/PROMO-Natal']) {
@@ -280,6 +280,29 @@ test('prazo de validade inválido devolve 400 com INVALID_EXPIRATION', async () 
     }
 });
 
+test('POST com removeTracking grava e devolve a URL sem rastreamento', async () => {
+    const res = await post(JSON.stringify({ url: 'https://example.com/?utm_source=x&id=1#topo', removeTracking: true }));
+    assert.equal(res.status, 201);
+    const { code, url } = await res.json();
+    assert.equal(url, 'https://example.com/?id=1#topo');
+
+    const redirect = await fetch(`${apiUrl}/${code}`, { method: 'HEAD', redirect: 'manual' });
+    assert.equal(redirect.headers.get('location'), 'https://example.com/?id=1#topo');
+});
+
+test('POST sem removeTracking devolve a URL como recebida', async () => {
+    const res = await post(JSON.stringify({ url: 'https://example.com/?utm_source=x' }));
+    assert.equal((await res.json()).url, 'https://example.com/?utm_source=x');
+});
+
+test('removeTracking que não é boolean devolve 400 com INVALID_REMOVE_TRACKING', async () => {
+    for (const removeTracking of ['true', 1, {}]) {
+        const res = await post(JSON.stringify({ url: 'https://example.com/', removeTracking }));
+        assert.equal(res.status, 400, String(removeTracking));
+        assert.equal((await res.json()).code, UrlErrorCode.INVALID_REMOVE_TRACKING);
+    }
+});
+
 test('devolve 404 para estatísticas de código inexistente ou inválido', async () => {
     for (const code of ['naoexiste', 'a.b', 'x'.repeat(65)]) {
         assert.equal((await fetch(statsUrl(code))).status, 404, code);
@@ -373,6 +396,9 @@ test('serve a interface web na raiz, apontando para a API de encurtar e para o J
     assert.match(html, /<select id="idioma">/);
     assert.match(html, /<label for="validade"[ >]/);
     assert.match(html, /<select id="validade" name="expiresIn"/);
+    // A issue pede a remoção de rastreamento ligada por padrão na interface.
+    assert.match(html, /<input id="remover-rastreamento" name="removeTracking" type="checkbox" checked aria-describedby="dica-rastreamento erro">/);
+    assert.match(html, /<label for="remover-rastreamento"[ >]/);
     assert.match(html, new RegExp(`data-api="${SHORTEN_PATH}"`));
     assert.match(html, new RegExp(`<script type="module" src="${STATIC_PATH}main\\.js"></script>`));
 });

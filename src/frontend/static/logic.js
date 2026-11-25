@@ -46,6 +46,7 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     ALIAS_TAKEN: 'MENSAGEM_APELIDO_EM_USO',
     ALIAS_UNAVAILABLE: 'MENSAGEM_APELIDOS_INDISPONIVEIS',
     INVALID_EXPIRATION: 'MENSAGEM_VALIDADE_INVALIDA',
+    INVALID_REMOVE_TRACKING: 'MENSAGEM_RASTREAMENTO_INVALIDO',
     // Só vem de /:code e do QR Code (410), não do POST; fica aqui para a lista seguir o backend.
     LINK_EXPIRED: 'MENSAGEM_LINK_EXPIRADO',
     // Vêm do DELETE (401 e 403).
@@ -57,6 +58,7 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
 const CODIGOS_DO_TOKEN = Object.freeze(['MANAGE_TOKEN_REQUIRED', 'INVALID_MANAGE_TOKEN']);
 
 const CODIGO_VALIDADE_INVALIDA = 'INVALID_EXPIRATION';
+const CODIGO_RASTREAMENTO_INVALIDO = 'INVALID_REMOVE_TRACKING';
 
 /** Vem com status 503: o servidor desativou os apelidos. */
 const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
@@ -65,7 +67,7 @@ const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
 const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN', CODIGO_APELIDOS_INDISPONIVEIS]);
 
 /** Campos do formulário que a API pode recusar; os valores são os ids dos campos no HTML. */
-export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido', VALIDADE: 'validade' });
+export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido', VALIDADE: 'validade', RASTREAMENTO: 'remover-rastreamento' });
 
 /**
  * Mensagem traduzida para a URL recusada; a de URL inválida quando o código falta ou é desconhecido.
@@ -132,6 +134,7 @@ export function mensagemDeFalha(error) {
 export function campoInvalido(status, codigo) {
     if (status === STATUS_CONFLITO || (codigo !== undefined && CODIGOS_DO_APELIDO.includes(codigo))) return CAMPO.APELIDO;
     if (codigo === CODIGO_VALIDADE_INVALIDA) return CAMPO.VALIDADE;
+    if (codigo === CODIGO_RASTREAMENTO_INVALIDO) return CAMPO.RASTREAMENTO;
     return status === STATUS_URL_INVALIDA ? CAMPO.URL : undefined;
 }
 
@@ -140,13 +143,25 @@ export function campoInvalido(status, codigo) {
  * @param {string} url
  * @param {string} apelido
  * @param {string} [validade] uma das opções de prazo do backend (`expiresIn`); vazio é sem prazo
+ * @param {boolean} [removerRastreamento] remove os parâmetros de rastreamento da URL (`removeTracking`)
  */
-export function corpoDoPedido(url, apelido, validade = '') {
+export function corpoDoPedido(url, apelido, validade = '', removerRastreamento = false) {
     return {
         url,
         ...(apelido && { alias: apelido }),
         ...(validade && { expiresIn: validade }),
+        ...(removerRastreamento && { removeTracking: true }),
     };
+}
+
+/**
+ * Se a URL gravada difere da digitada (ex.: parâmetros de rastreamento removidos). Compara com a forma normalizada
+ * da digitada, para diferenças só de formato (como a `/` final que o backend acrescenta) não contarem.
+ * @param {string} digitada
+ * @param {string} gravada
+ */
+export function destinoAlterado(digitada, gravada) {
+    return URL.parse(digitada)?.href !== gravada;
 }
 
 /**
@@ -232,6 +247,7 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
  * @typedef {object} LinkCurto
  * @property {string} code
  * @property {string} shortUrl
+ * @property {string} url URL de destino gravada (sem rastreamento, se pedido)
  * @property {string | null} expiresAt data de expiração ISO 8601, ou null se o link não expira
  * @property {string} manageToken token secreto que permite apagar o link; a API só o devolve na criação
  */

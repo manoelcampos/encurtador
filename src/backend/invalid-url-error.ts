@@ -15,6 +15,8 @@ export const UrlErrorCode = {
     ALIAS_UNAVAILABLE: 'ALIAS_UNAVAILABLE',
     /** Prazo de validade (`expiresIn`) fora da lista aceita (EXPIRATION_OPTIONS). */
     INVALID_EXPIRATION: 'INVALID_EXPIRATION',
+    /** `removeTracking` com valor que não é boolean. */
+    INVALID_REMOVE_TRACKING: 'INVALID_REMOVE_TRACKING',
     /** O link passou do prazo de validade; `/:code` e o QR Code respondem 410. */
     LINK_EXPIRED: 'LINK_EXPIRED',
     /** `DELETE` sem o token de gestão no header Authorization; a API responde 401. */

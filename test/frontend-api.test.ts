@@ -25,13 +25,17 @@ test('devolve o código e o shortUrl quando a API responde 201', async () => {
     let pedido: { input: unknown; init?: RequestInit } | undefined;
     globalThis.fetch = async (input, init) => {
         pedido = { input, init };
-        return new Response(JSON.stringify({ code: 'abc', shortUrl: 'https://encurta.do/abc', manageToken: 'segredo' }), { status: 201 });
+        return new Response(JSON.stringify({ code: 'abc', shortUrl: 'https://encurta.do/abc', url: URL_LONGA, manageToken: 'segredo' }), { status: 201 });
     };
 
-    assert.deepEqual(await encurtar(SHORTEN_PATH, URL_LONGA), { code: 'abc', shortUrl: 'https://encurta.do/abc', expiresAt: null, manageToken: 'segredo' });
+    assert.deepEqual(await encurtar(SHORTEN_PATH, URL_LONGA),
+        { code: 'abc', shortUrl: 'https://encurta.do/abc', url: URL_LONGA, expiresAt: null, manageToken: 'segredo' });
     assert.equal(pedido?.input, SHORTEN_PATH);
     assert.equal(pedido?.init?.method, 'POST');
     assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA });
+
+    await encurtar(SHORTEN_PATH, URL_LONGA, '', '', true);
+    assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA, removeTracking: true });
 });
 
 test('lança ApiError com status 400 e a mensagem traduzida de URL inválida', async () => {
