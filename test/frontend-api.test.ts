@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { ApiError, encurtar } from '../src/frontend/static/api.js';
-import { mensagemDeFalha } from '../src/frontend/static/logic.js';
+import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
+import { CHAVES_DOS_CODIGOS_DE_ERRO, mensagemDeFalha } from '../src/frontend/static/logic.js';
 import { texto } from '../src/frontend/static/messages.js';
 
 const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
@@ -41,6 +42,25 @@ test('lança ApiError com status 400 e a mensagem traduzida de URL inválida', a
         assert.equal(error.message, texto('MENSAGEM_URL_INVALIDA'));
         return true;
     });
+});
+
+test('400 com code usa a mensagem traduzida do motivo; code desconhecido usa a de URL inválida', async () => {
+    const casos = [
+        ['MALICIOUS_URL', 'MENSAGEM_URL_MALICIOSA'],
+        ['PRIVATE_NETWORK', 'MENSAGEM_URL_REDE_LOCAL'],
+        ['OWN_DOMAIN', 'MENSAGEM_URL_PROPRIO_ENCURTADOR'],
+        ['DESCONHECIDO', 'MENSAGEM_URL_INVALIDA'],
+        ['toString', 'MENSAGEM_URL_INVALIDA'],
+    ] as const;
+
+    for (const [code, chave] of casos) {
+        responder(400, JSON.stringify({ error: 'Recusada.', code }));
+        await assert.rejects(encurtar(SHORTEN_PATH, URL_LONGA), { message: texto(chave) }, code);
+    }
+});
+
+test('os códigos de erro do frontend são os mesmos do backend', () => {
+    assert.deepEqual(Object.keys(CHAVES_DOS_CODIGOS_DE_ERRO).sort(), Object.values(UrlErrorCode).sort());
 });
 
 test('lança ApiError 429 com os minutos de espera lidos do Retry-After', async () => {

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
+import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
@@ -11,7 +12,9 @@ import { STATIC_DIR, STATIC_PATH } from '../src/frontend/static-files.ts';
 import { MARCADOR_CODIGO } from '../src/frontend/static/logic.js';
 
 const BASE_URL = 'https://encurta.do/';
-const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:')), BASE_URL);
+const MALICIOUS_URL = 'https://malicioso.example/';
+const threatChecker = { isMalicious: async (url: string) => url === MALICIOUS_URL };
+const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL, { threatChecker }), BASE_URL);
 let apiUrl: string;
 
 before(async () => {
@@ -38,7 +41,7 @@ test('POST encurta e GET redireciona', async () => {
 
 test('código antigo em base64url continua redirecionando', async () => {
     const legacyCode = 'aB-_lO01';
-    const legacyServer = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), () => legacyCode), BASE_URL);
+    const legacyServer = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL, { generateCode: () => legacyCode }), BASE_URL);
     await new Promise<void>(resolve => legacyServer.listen(0, resolve));
     const legacyUrl = `http://localhost:${(legacyServer.address() as AddressInfo).port}`;
 
@@ -58,6 +61,25 @@ test('devolve 400 para JSON ou URL inválidos', async () => {
     assert.equal((await post('{quebrado')).status, 400);
     assert.equal((await post('null')).status, 400);
     assert.equal((await post(JSON.stringify({ url: 'javascript:alert(1)' }))).status, 400);
+});
+
+test('devolve 400 com o código do motivo para URLs recusadas', async () => {
+    const cases = [
+        ['javascript:alert(1)', UrlErrorCode.INVALID_URL],
+        [`${BASE_URL}abc`, UrlErrorCode.OWN_DOMAIN],
+        ['http://localhost/x', UrlErrorCode.PRIVATE_NETWORK],
+        ['http://2130706433/', UrlErrorCode.PRIVATE_NETWORK],
+        [MALICIOUS_URL, UrlErrorCode.MALICIOUS_URL],
+    ];
+
+    for (const [url, code] of cases) {
+        const res = await post(JSON.stringify({ url }));
+        assert.equal(res.status, 400, url);
+
+        const body = await res.json();
+        assert.equal(body.code, code, url);
+        assert.equal(typeof body.error, 'string');
+    }
 });
 
 test('devolve 413 para corpo grande demais', async () => {
