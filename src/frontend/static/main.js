@@ -1,6 +1,8 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
 import { copiarLink, mensagemDeFalha, qrCodeDoLink, urlInvalida } from './logic.js';
+import { AVISO_OPCOES_COMPARTILHAMENTO } from './messages.js';
+import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
 /**
  * @template {Element} T
@@ -30,6 +32,7 @@ const acoes = elemento('acoes', HTMLElement);
 const aviso = elemento('aviso', HTMLElement);
 const qrCode = elemento('qrcode', HTMLImageElement);
 const baixar = elemento('baixar', HTMLAnchorElement);
+const redes = elemento('redes', HTMLUListElement);
 const caminhoApi = form.dataset.api ?? '';
 const rotaQrCode = form.dataset.qrcode ?? '';
 
@@ -41,6 +44,7 @@ function mostrarErro(mensagem, invalida) {
     erro.textContent = mensagem;
     resultado.hidden = true;
     acoes.hidden = true;
+    redes.hidden = true;
     qrCode.hidden = true;
     if (invalida) {
         input.setAttribute('aria-invalid', 'true');
@@ -54,7 +58,36 @@ function mostrarLink(linkCurto) {
     link.textContent = linkCurto.shortUrl;
     resultado.hidden = false;
     acoes.hidden = false;
+    redes.hidden = true;
     mostrarQrCode(linkCurto);
+}
+
+/** @param {import('./share.js').LinkDeCompartilhamento} opcao */
+function criarOpcaoDeRede({ rotulo, href, externo }) {
+    const a = document.createElement('a');
+    a.className = 'botao';
+    a.href = href;
+    a.textContent = rotulo;
+    if (externo) {
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+    }
+
+    const item = document.createElement('li');
+    item.append(a);
+    return item;
+}
+
+function mostrarRedes() {
+    redes.replaceChildren(...linksDeCompartilhamento(link.textContent).map(criarOpcaoDeRede));
+    redes.hidden = false;
+    aviso.textContent = AVISO_OPCOES_COMPARTILHAMENTO;
+}
+
+async function compartilharLink() {
+    aviso.textContent = '';
+    const share = 'share' in navigator ? navigator.share.bind(navigator) : undefined;
+    if (await compartilhar(link.textContent, share) === RESULTADO.ALTERNATIVO) mostrarRedes();
 }
 
 /** @param {import('./logic.js').LinkCurto} linkCurto */
@@ -97,6 +130,7 @@ const dependenciasCopia = {
 };
 
 elemento('copiar', HTMLButtonElement).addEventListener('click', () => copiarLink(dependenciasCopia));
+elemento('compartilhar', HTMLButtonElement).addEventListener('click', compartilharLink);
 
 form.addEventListener('submit', async event => {
     event.preventDefault();
