@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
@@ -118,6 +118,62 @@ test('responde HEAD na rota do QR Code', async () => {
     assert.equal(res.headers.get('content-type'), 'image/svg+xml');
 });
 
+const statsUrl = (code: string) => apiUrl + STATS_PATH.replace(CODE_PARAM, code);
+const totalClicks = async (code: string) => (await (await fetch(statsUrl(code))).json()).totalClicks;
+
+test('cada GET no link curto aumenta o contador, mas HEAD não', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/cliques' }))).json();
+    assert.equal(await totalClicks(code), 0);
+
+    await fetch(`${apiUrl}/${code}`, { redirect: 'manual' });
+    await fetch(`${apiUrl}/${code}`, { redirect: 'manual' });
+    assert.equal(await totalClicks(code), 2);
+
+    const head = await fetch(`${apiUrl}/${code}`, { method: 'HEAD', redirect: 'manual' });
+    assert.equal(head.status, 302);
+    assert.equal(await totalClicks(code), 2);
+});
+
+test('devolve as estatísticas em JSON, com os cliques por dia', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/stats' }))).json();
+    await fetch(`${apiUrl}/${code}`, { redirect: 'manual' });
+
+    const res = await fetch(statsUrl(code));
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /application\/json/);
+
+    const today = new Date().toISOString().slice(0, 10);
+    assert.deepEqual(await res.json(), { code, totalClicks: 1, clicksByDay: [{ date: today, clicks: 1 }] });
+    assert.equal((await fetch(statsUrl(code), { method: 'HEAD' })).status, 200);
+});
+
+test('redireciona mesmo quando a gravação do clique falha', async (t) => {
+    t.mock.method(console, 'error', () => {});
+    const repository = new SqliteUrlRepository(':memory:');
+    repository.addClick = async () => {
+        throw new Error('falha simulada ao gravar o clique');
+    };
+
+    const failingServer = createApiServer(new UrlShortenerService(repository, BASE_URL), BASE_URL);
+    await new Promise<void>(resolve => failingServer.listen(0, resolve));
+    const failingUrl = `http://localhost:${(failingServer.address() as AddressInfo).port}`;
+
+    try {
+        const { code } = await (await fetch(failingUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/falha' }) })).json();
+        const redirect = await fetch(`${failingUrl}/${code}`, { redirect: 'manual' });
+        assert.equal(redirect.status, 302);
+        assert.equal(redirect.headers.get('location'), 'https://example.com/falha');
+    } finally {
+        failingServer.close();
+    }
+});
+
+test('devolve 404 para estatísticas de código inexistente ou inválido', async () => {
+    for (const code of ['naoexiste', 'a.b', 'x'.repeat(65)]) {
+        assert.equal((await fetch(statsUrl(code))).status, 404, code);
+    }
+});
+
 test('o marcador do código no frontend é o mesmo da rota do backend', () => {
     assert.equal(MARCADOR_CODIGO, CODE_PARAM);
 });
@@ -133,7 +189,7 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     assert.equal(res.status, 200);
 
     const spec = await res.json();
-    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, '/{code}']);
+    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, STATS_PATH, '/{code}']);
     assert.equal(spec.servers[0].url, BASE_URL);
 });
 

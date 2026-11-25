@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { InvalidUrlError, UrlErrorCode } from '../src/backend/invalid-url-error.ts';
-import { UrlShortenerService, type UrlShortenerOptions } from '../src/backend/url-shortener-service.ts';
+import { STATS_DAYS, UrlShortenerService, type UrlShortenerOptions } from '../src/backend/url-shortener-service.ts';
 import type { UrlThreatChecker } from '../src/backend/url-threat-checker.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
 
@@ -90,4 +90,66 @@ test('não consulta o provedor externo quando a URL já é recusada localmente',
     await rejectsWith(service.shorten('http://127.0.0.1/'), UrlErrorCode.PRIVATE_NETWORK);
     await rejectsWith(service.shorten('javascript:alert(1)'), UrlErrorCode.INVALID_URL);
     assert.deepEqual(checked, []);
+});
+
+/** Relógio falso: devolve a data atual e permite trocá-la. */
+function fakeClock(start: string) {
+    let current = new Date(start);
+    return {
+        now: () => current,
+        set: (date: string) => { current = new Date(date); },
+    };
+}
+
+test('cada visita aumenta o contador e os cliques são agrupados por dia em UTC', async () => {
+    const clock = fakeClock('2026-11-24T23:59:59Z');
+    const service = createService({ now: clock.now });
+    const code = await service.shorten('https://example.com/');
+
+    await service.visit(code);
+    clock.set('2026-11-25T00:00:00Z');
+    await service.visit(code);
+    await service.visit(code);
+
+    assert.deepEqual(await service.stats(code), {
+        code,
+        totalClicks: 3,
+        clicksByDay: [{ date: '2026-11-24', clicks: 1 }, { date: '2026-11-25', clicks: 2 }],
+    });
+});
+
+test(`clicksByDay só mostra os últimos ${STATS_DAYS} dias, mas o total conta todos`, async () => {
+    const clock = fakeClock('2026-10-26T12:00:00Z');
+    const service = createService({ now: clock.now });
+    const code = await service.shorten('https://example.com/');
+    await service.visit(code);
+    clock.set('2026-10-27T00:00:00Z');
+    await service.visit(code);
+
+    clock.set('2026-11-25T23:00:00Z');
+    const stats = await service.stats(code);
+    assert.equal(stats?.totalClicks, 2);
+    assert.deepEqual(stats?.clicksByDay, [{ date: '2026-10-27', clicks: 1 }]);
+});
+
+test('resolve não conta clique e código inexistente não tem estatísticas', async () => {
+    const service = createService();
+    const code = await service.shorten('https://example.com/');
+    await service.resolve(code);
+    assert.equal((await service.stats(code))?.totalClicks, 0);
+    assert.equal(await service.stats('inexistente'), undefined);
+    assert.equal(await service.visit('inexistente'), undefined);
+});
+
+test('falha ao registrar o clique não impede o redirecionamento', async (t) => {
+    const errorLog = t.mock.method(console, 'error', () => {});
+    const repository = new SqliteUrlRepository(':memory:');
+    repository.addClick = async () => {
+        throw new Error('falha simulada ao gravar o clique');
+    };
+
+    const service = new UrlShortenerService(repository, BASE_URL);
+    const code = await service.shorten('https://example.com/');
+    assert.equal(await service.visit(code), 'https://example.com/');
+    assert.equal(errorLog.mock.callCount(), 1);
 });

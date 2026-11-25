@@ -34,7 +34,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interface `UrlRepository` e implementação SQLite).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks`). As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
@@ -57,11 +57,20 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), ou `404`. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
-| `GET` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. |
+| `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
+| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. Só `GET` conta como clique. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
 Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://localhost:PORT`), `DB_PATH` (padrão `encurtador.db`) e `SAFE_BROWSING_API_KEY` (veja abaixo).
+
+### Contagem de cliques
+
+- Cada `GET /:code` que redireciona grava um clique na tabela `clicks` só com o código e a data/hora em UTC, sem IP nem user agent (LGPD).
+- `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas.
+- Se a gravação do clique falhar, o erro vai para o log e o redirecionamento acontece mesmo assim.
+- `totalClicks` conta todo o período. `clicksByDay` mostra só os últimos `STATS_DAYS` (30) dias em UTC, contando hoje, em ordem de data, e omite os dias sem cliques.
+- A data/hora vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas.
 
 ### URLs recusadas
 
@@ -88,7 +97,7 @@ Valor inválido nestas variáveis impede a API de iniciar, com uma mensagem que 
 |----------|--------|-----------|
 | `CREATE_RATE_LIMIT` | `30` | Criações (`POST /api/urls`) por IP em cada janela. |
 | `CREATE_RATE_WINDOW_SECONDS` | `3600` | Duração da janela de criação, em segundos. |
-| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code etc.) por IP em cada janela. |
+| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code, estatísticas etc.) por IP em cada janela. |
 | `ACCESS_RATE_WINDOW_SECONDS` | `60` | Duração da janela de acesso, em segundos. |
 | `TRUST_PROXY` | `false` | Com `true`, o IP do cliente é o **último** valor do header `X-Forwarded-For`. Isso só serve para **um único** proxy confiável na frente da API: com dois ou mais, o último valor é o IP de um proxy, e todos os clientes dividem o mesmo limite. Só ligue se a API não puder ser acessada sem passar pelo proxy, senão qualquer cliente forja o próprio IP. Com `false`, usa o IP da conexão. |
 

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH } from './api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError } from './invalid-url-error.ts';
@@ -21,7 +21,9 @@ const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
 const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
 // Só nomes simples (sem barras nem "..") dentro de STATIC_DIR, o que impede path traversal.
 const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
-const QRCODE_ROUTE = new RegExp(`^${QRCODE_PATH.replace(CODE_PARAM, '([^/]+)')}$`);
+const routeOf = (path: string) => new RegExp(`^${path.replace(CODE_PARAM, '([^/]+)')}$`);
+const QRCODE_ROUTE = routeOf(QRCODE_PATH);
+const STATS_ROUTE = routeOf(STATS_PATH);
 const CODE_NOT_FOUND_MESSAGE = 'Código não encontrado.';
 const TOO_MANY_REQUESTS = 429;
 const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de novo mais tarde.';
@@ -81,13 +83,18 @@ async function handleRequest(
         return sendQrCode(service, baseUrl, qrCode, res);
     }
 
+    const statsCode = path.match(STATS_ROUTE)?.[1];
+    if (isRead && statsCode && CODE_PATTERN.test(statsCode)) {
+        return sendStats(service, statsCode, res);
+    }
+
     if (isRead && path.startsWith(STATIC_PATH)) {
         return sendStatic(res, path.slice(STATIC_PATH.length));
     }
 
     const code = path.slice(1);
     if (isRead && CODE_PATTERN.test(code)) {
-        return redirect(service, code, res);
+        return redirect(service, code, req.method === 'GET', res);
     }
 
     throw new HttpError(404, NOT_FOUND_MESSAGE);
@@ -110,22 +117,27 @@ async function shorten(service: UrlShortenerService, baseUrl: string, req: Incom
 }
 
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
-    await requireUrl(service, code);
+    requireCode(await service.resolve(code));
     send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(code, baseUrl)));
 }
 
-/** Retorna a URL original do código, ou lança 404 se ele não existir. */
-async function requireUrl(service: UrlShortenerService, code: string): Promise<string> {
-    const url = await service.resolve(code);
-    if (!url) {
+async function sendStats(service: UrlShortenerService, code: string, res: ServerResponse) {
+    sendJson(res, 200, requireCode(await service.stats(code)));
+}
+
+/** Retorna o valor encontrado para o código, ou lança 404 se ele não existir. */
+function requireCode<T>(found: T | undefined): T {
+    if (!found) {
         throw new HttpError(404, CODE_NOT_FOUND_MESSAGE);
     }
 
-    return url;
+    return found;
 }
 
-async function redirect(service: UrlShortenerService, code: string, res: ServerResponse) {
-    send(res, 302, { Location: await requireUrl(service, code) });
+/** Só GET conta como clique: HEAD é usado por robôs e prévias de link, que não são visitas de pessoas. */
+async function redirect(service: UrlShortenerService, code: string, countClick: boolean, res: ServerResponse) {
+    const url = countClick ? await service.visit(code) : await service.resolve(code);
+    send(res, 302, { Location: requireCode(url) });
 }
 
 async function sendStatic(res: ServerResponse, name: string) {
