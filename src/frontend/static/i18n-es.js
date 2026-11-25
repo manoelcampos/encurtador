@@ -59,6 +59,7 @@ const es = {
     BOTAO_CONFIRMAR_APAGAR: 'Confirmar eliminación',
     AVISO_CONFIRMAR_APAGAR: 'Haz clic de nuevo en el botón para confirmar la eliminación del enlace.',
     AVISO_LINK_APAGADO: 'Enlace eliminado.',
+    AVISO_LINK_REMOVIDO_TOKEN_INVALIDO: 'La clave secreta guardada no coincide con este enlace, así que no se puede eliminar. Se quitó de la lista.',
     AVISO_FALHA_GUARDAR: 'No se pudo guardar el enlace en este navegador. No podrás eliminarlo después.',
     MENSAGEM_TOKEN_AUSENTE: 'Falta la clave secreta del enlace.',
     MENSAGEM_TOKEN_INVALIDO: 'La clave secreta guardada no coincide con este enlace. No se puede eliminar.',

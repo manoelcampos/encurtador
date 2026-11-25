@@ -58,6 +58,7 @@ const ptBR = {
     BOTAO_CONFIRMAR_APAGAR: 'Confirmar exclusão',
     AVISO_CONFIRMAR_APAGAR: 'Clique de novo no botão para confirmar a exclusão do link.',
     AVISO_LINK_APAGADO: 'Link apagado.',
+    AVISO_LINK_REMOVIDO_TOKEN_INVALIDO: 'A chave secreta guardada não confere com este link, então ele não pode ser apagado. Ele foi tirado da lista.',
     AVISO_FALHA_GUARDAR: 'Não foi possível guardar o link neste navegador. Você não vai conseguir apagá-lo depois.',
     MENSAGEM_TOKEN_AUSENTE: 'Falta a chave secreta do link.',
     MENSAGEM_TOKEN_INVALIDO: 'A chave secreta guardada não confere com este link. Não é possível apagá-lo.',

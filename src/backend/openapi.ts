@@ -85,7 +85,12 @@ export function createOpenApiSpec(baseUrl: string) {
                     security: [{ [MANAGE_TOKEN_SCHEME]: [] }],
                     responses: {
                         204: { description: 'Link apagado' },
-                        401: urlErrorResponse('Token ausente (`code` = `MANAGE_TOKEN_REQUIRED`).'),
+                        401: {
+                            ...urlErrorResponse('Token ausente (`code` = `MANAGE_TOKEN_REQUIRED`).'),
+                            headers: {
+                                'WWW-Authenticate': { description: 'Esquema de autenticação esperado', schema: { type: 'string', const: 'Bearer' } },
+                            },
+                        },
                         403: urlErrorResponse('Token errado, ou link antigo sem token (`code` = `INVALID_MANAGE_TOKEN`).'),
                         404: errorResponse('Código não encontrado'),
                         429: TOO_MANY_REQUESTS_RESPONSE,

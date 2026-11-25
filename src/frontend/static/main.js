@@ -2,7 +2,7 @@
 import { apagar, ApiError, encurtar } from './api.js';
 import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
-import { enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from './my-links.js';
+import { avisoAoEsquecer, enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from './my-links.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
 /**
@@ -194,8 +194,6 @@ const listaMeusLinks = elemento('lista-meus-links', HTMLUListElement);
 const meusLinksVazio = elemento('meus-links-vazio', HTMLElement);
 const avisoMeusLinks = elemento('aviso-meus-links', HTMLElement);
 const { link: rotaDoLink = '', stats: rotaEstatisticas = '', previa: sufixoPrevia = '' } = secaoMeusLinks.dataset;
-/** A API responde 404 ao apagar um link que já não existe: ele sai da lista do mesmo jeito. */
-const STATUS_NAO_ENCONTRADO = 404;
 
 /**
  * O acesso ao localStorage fica dentro das funções, pois ele pode lançar erro (ex.: bloqueado pelo navegador).
@@ -212,10 +210,17 @@ const dependenciasAvisoMeusLinks = {
     aposAtraso: acao => { setTimeout(acao, ATRASO_AVISO_MS); },
 };
 
-/** @param {import('./logic.js').LinkCurto} linkCurto */
+/**
+ * Uma falha aqui só vai para o log: o link já foi criado e mostrado, então o envio não deve virar erro.
+ * @param {import('./logic.js').LinkCurto} linkCurto
+ */
 function lembrarLink(linkCurto) {
-    if (!guardarLink(armazenamento, linkCurto)) avisarDeNovo(dependenciasAviso, texto('AVISO_FALHA_GUARDAR'));
-    renderizarMeusLinks();
+    try {
+        if (!guardarLink(armazenamento, linkCurto)) avisarDeNovo(dependenciasAviso, texto('AVISO_FALHA_GUARDAR'));
+        renderizarMeusLinks();
+    } catch (error) {
+        console.error('Não foi possível atualizar "Meus links":', error);
+    }
 }
 
 function renderizarMeusLinks() {
@@ -303,9 +308,10 @@ async function cliqueEmApagar(botao, linkGuardado) {
     botao.disabled = true;
     try {
         await apagar(rotaDoLink, linkGuardado);
-        concluirExclusao(linkGuardado.code);
+        concluirExclusao(linkGuardado.code, 'AVISO_LINK_APAGADO');
     } catch (error) {
-        if (error instanceof ApiError && error.status === STATUS_NAO_ENCONTRADO) return concluirExclusao(linkGuardado.code);
+        const chaveDoAviso = error instanceof ApiError ? avisoAoEsquecer(error.status, error.codigo) : undefined;
+        if (chaveDoAviso) return concluirExclusao(linkGuardado.code, chaveDoAviso);
 
         botao.disabled = false;
         botao.focus();
@@ -316,12 +322,13 @@ async function cliqueEmApagar(botao, linkGuardado) {
 /**
  * O botão apagado some da página; o foco vai para o título da seção, para não se perder.
  * @param {string} code
+ * @param {import('./messages.js').ChaveDeTexto} chaveDoAviso
  */
-function concluirExclusao(code) {
+function concluirExclusao(code, chaveDoAviso) {
     esquecerLink(armazenamento, code);
     renderizarMeusLinks();
     tituloMeusLinks.focus();
-    avisarDeNovo(dependenciasAvisoMeusLinks, texto('AVISO_LINK_APAGADO'));
+    avisarDeNovo(dependenciasAvisoMeusLinks, texto(chaveDoAviso));
 }
 
 const CHAVE_IDIOMA_SALVO = 'idioma';

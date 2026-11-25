@@ -3,6 +3,10 @@ import { MARCADOR_CODIGO } from './logic.js';
 
 const CHAVE_MEUS_LINKS = 'meus-links';
 const CAMPOS_OBRIGATORIOS = Object.freeze(['code', 'shortUrl', 'manageToken']);
+const PROTOCOLOS_WEB = Object.freeze(['http:', 'https:']);
+const STATUS_NAO_ENCONTRADO = 404;
+const STATUS_PROIBIDO = 403;
+const CODIGO_TOKEN_INVALIDO = 'INVALID_MANAGE_TOKEN';
 
 /**
  * Link guardado neste navegador.
@@ -24,7 +28,41 @@ function ehLinkGuardado(item) {
     if (typeof item !== 'object' || item === null) return false;
 
     const campos = /** @type {Record<string, unknown>} */ (item);
-    return CAMPOS_OBRIGATORIOS.every(campo => typeof campos[campo] === 'string');
+    return CAMPOS_OBRIGATORIOS.every(campo => typeof campos[campo] === 'string')
+        && ehUrlWeb(/** @type {string} */ (campos.shortUrl))
+        && ehDataOpcional(campos.expiresAt);
+}
+
+/**
+ * Só http/https vira href: um valor alterado como `javascript:` nunca chega ao link.
+ * @param {string} texto
+ */
+function ehUrlWeb(texto) {
+    try {
+        return PROTOCOLOS_WEB.includes(new URL(texto).protocol);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Ausente, null ou texto com data válida; outro valor faria a formatação da data lançar RangeError.
+ * @param {unknown} valor
+ */
+const ehDataOpcional = valor => valor === undefined || valor === null
+    || (typeof valor === 'string' && !Number.isNaN(Date.parse(valor)));
+
+/**
+ * Se o link deve sair da lista depois que a API recusou apagá-lo, e o aviso a mostrar. Sai quando já não existe
+ * (404) ou quando o token guardado não confere (403 com INVALID_MANAGE_TOKEN), pois aí nunca poderá ser apagado.
+ * @param {number} status código HTTP da resposta
+ * @param {string | undefined} codigo campo `code` do corpo da resposta
+ * @returns {import('./messages.js').ChaveDeTexto | undefined} chave do aviso, ou undefined se o link fica na lista
+ */
+export function avisoAoEsquecer(status, codigo) {
+    if (status === STATUS_NAO_ENCONTRADO) return 'AVISO_LINK_APAGADO';
+    if (status === STATUS_PROIBIDO && codigo === CODIGO_TOKEN_INVALIDO) return 'AVISO_LINK_REMOVIDO_TOKEN_INVALIDO';
+    return undefined;
 }
 
 /**

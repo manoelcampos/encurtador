@@ -6,7 +6,7 @@ import { HOME_PAGE_HTML } from '../src/frontend/home-page.ts';
 import { ApiError, apagar } from '../src/frontend/static/api.js';
 import { mensagemDaApi } from '../src/frontend/static/logic.js';
 import { texto } from '../src/frontend/static/messages.js';
-import { enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from '../src/frontend/static/my-links.js';
+import { avisoAoEsquecer, enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from '../src/frontend/static/my-links.js';
 
 const AGORA = new Date('2026-11-25T12:00:00Z');
 const LINK = { code: 'abc', shortUrl: 'https://encurta.do/abc', expiresAt: null, manageToken: 'segredo' };
@@ -66,8 +66,31 @@ test('ignora dados guardados inválidos ou alterados', () => {
     armazenamento.setItem('meus-links', '{quebrado');
     assert.deepEqual(lerMeusLinks(armazenamento), []);
 
-    armazenamento.setItem('meus-links', JSON.stringify([null, { code: 'sem-token' }, { ...LINK, createdAt: 'x' }]));
-    assert.deepEqual(lerMeusLinks(armazenamento), [{ ...LINK, createdAt: 'x' }]);
+    const validos = [
+        { ...LINK, createdAt: 'x' },
+        { ...LINK, expiresAt: '2026-12-02T12:00:00.000Z' },
+        { code: 'sem-prazo', shortUrl: 'http://encurta.do/sem-prazo', manageToken: 't' },
+    ];
+    const invalidos = [
+        null,
+        { code: 'sem-token' },
+        { ...LINK, expiresAt: 'lixo' },
+        { ...LINK, expiresAt: { data: 1 } },
+        { ...LINK, expiresAt: 0 },
+        { ...LINK, shortUrl: 'javascript:alert(1)' },
+        { ...LINK, shortUrl: 'não é URL' },
+    ];
+    armazenamento.setItem('meus-links', JSON.stringify([...invalidos, ...validos]));
+    assert.deepEqual(lerMeusLinks(armazenamento), validos);
+});
+
+test('tira da lista o link que já não existe (404) ou cujo token não confere (403), com o aviso certo', () => {
+    assert.equal(avisoAoEsquecer(404, undefined), 'AVISO_LINK_APAGADO');
+    assert.equal(avisoAoEsquecer(403, UrlErrorCode.INVALID_MANAGE_TOKEN), 'AVISO_LINK_REMOVIDO_TOKEN_INVALIDO');
+    assert.equal(avisoAoEsquecer(401, UrlErrorCode.MANAGE_TOKEN_REQUIRED), undefined);
+    assert.equal(avisoAoEsquecer(403, undefined), undefined);
+    assert.equal(avisoAoEsquecer(429, undefined), undefined);
+    assert.equal(avisoAoEsquecer(500, undefined), undefined);
 });
 
 test('monta os endereços das estatísticas e da pré-visualização com as rotas do backend', () => {

@@ -352,6 +352,7 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     const spec = await res.json();
     assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, LINK_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
     assert.equal(spec.servers[0].url, BASE_URL);
+    assert.ok(spec.paths[LINK_PATH].delete.responses[401].headers['WWW-Authenticate']);
 });
 
 test('serve o Swagger UI apontando para a especificação', async () => {

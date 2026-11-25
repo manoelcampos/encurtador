@@ -59,6 +59,7 @@ const en = {
     BOTAO_CONFIRMAR_APAGAR: 'Confirm deletion',
     AVISO_CONFIRMAR_APAGAR: 'Click the button again to confirm deleting the link.',
     AVISO_LINK_APAGADO: 'Link deleted.',
+    AVISO_LINK_REMOVIDO_TOKEN_INVALIDO: 'The saved secret key does not match this link, so it cannot be deleted. It was removed from the list.',
     AVISO_FALHA_GUARDAR: 'Could not save the link in this browser. You will not be able to delete it later.',
     MENSAGEM_TOKEN_AUSENTE: 'The secret key of the link is missing.',
     MENSAGEM_TOKEN_INVALIDO: 'The saved secret key does not match this link. It cannot be deleted.',
