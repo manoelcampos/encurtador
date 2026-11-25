@@ -32,8 +32,10 @@ test('abre banco da versão anterior, sem a tabela de cliques, e passa a contar'
         assert.equal(await repository.find('antigo'), 'https://example.com/');
         assert.equal(await repository.countClicks('antigo'), 0);
 
-        await repository.addClick('antigo', new Date('2026-11-25T10:00:00Z'));
-        assert.equal(await repository.countClicks('antigo'), 1);
+        await repository.addClick('antigo', '2026-11-25');
+        await repository.addClick('antigo', '2026-11-25');
+        assert.equal(await repository.countClicks('antigo'), 2);
+        assert.deepEqual(await repository.countClicksByDay('antigo', '2026-11-25'), [{ date: '2026-11-25', clicks: 2 }]);
     } finally {
         repository.close();
         await rm(dir, { recursive: true, force: true });
@@ -42,5 +44,5 @@ test('abre banco da versão anterior, sem a tabela de cliques, e passa a contar'
 
 test('recusa clique em código inexistente (chave estrangeira)', async () => {
     const repository = new SqliteUrlRepository(':memory:');
-    await assert.rejects(repository.addClick('naoexiste', new Date()));
+    await assert.rejects(repository.addClick('naoexiste', '2026-11-25'));
 });

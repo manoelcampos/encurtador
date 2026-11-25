@@ -6,12 +6,22 @@ export interface DailyClicks {
 
 /** Contrato da camada de acesso a dados para os cliques nos links curtos. */
 export interface ClickRepository {
-    /** Registra um clique no código. Só guarda o código e a data/hora, sem dados de quem clicou (LGPD). */
-    addClick(code: string, clickedAt: Date): Promise<void>;
+    /**
+     * Soma um clique ao contador do código no dia `date` (YYYY-MM-DD, UTC).
+     * Só guarda o total por dia, sem dados de quem clicou nem a hora (LGPD).
+     */
+    addClick(code: string, date: string): Promise<void>;
 
     /** Total de cliques do código desde que foi criado. */
     countClicks(code: string): Promise<number>;
 
-    /** Cliques por dia (UTC) a partir de `since` (YYYY-MM-DD), em ordem de data. Dias sem cliques ficam de fora. */
+    /** Cliques por dia a partir de `since` (YYYY-MM-DD), em ordem de data. Dias sem cliques ficam de fora. */
     countClicksByDay(code: string, since: string): Promise<DailyClicks[]>;
 }
+
+/** Usado quando nenhum repositório de cliques é injetado: não registra nada e não há cliques. */
+export const NO_CLICK_REPOSITORY: ClickRepository = {
+    addClick: async () => {},
+    countClicks: async () => 0,
+    countClicksByDay: async () => [],
+};

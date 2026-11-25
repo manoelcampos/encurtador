@@ -34,7 +34,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks`). As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
@@ -66,11 +66,11 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 
 ### Contagem de cliques
 
-- Cada `GET /:code` que redireciona grava um clique na tabela `clicks` só com o código e a data/hora em UTC, sem IP nem user agent (LGPD).
+- Cada `GET /:code` que redireciona soma 1 ao contador do código no dia (UTC) na tabela `clicks_daily(code, date, clicks)`, com UPSERT. Não guarda hora, IP nem user agent (LGPD), e `/stats` lê no máximo uma linha por dia, por mais cliques que haja.
 - `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas.
 - Se a gravação do clique falhar, o erro vai para o log e o redirecionamento acontece mesmo assim.
 - `totalClicks` conta todo o período. `clicksByDay` mostra só os últimos `STATS_DAYS` (30) dias em UTC, contando hoje, em ordem de data, e omite os dias sem cliques.
-- A data/hora vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas.
+- A data vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas. O `ClickRepository` é injetado pela opção `clicks`; sem ela, nenhum clique é registrado (`NO_CLICK_REPOSITORY`).
 
 ### URLs recusadas
 

@@ -7,6 +7,7 @@ import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
+import { NO_CLICK_REPOSITORY } from '../src/data/click-repository.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
 import { STATIC_DIR, STATIC_PATH } from '../src/frontend/static-files.ts';
 import { MARCADOR_CODIGO } from '../src/frontend/static/logic.js';
@@ -14,7 +15,11 @@ import { MARCADOR_CODIGO } from '../src/frontend/static/logic.js';
 const BASE_URL = 'https://encurta.do/';
 const MALICIOUS_URL = 'https://malicioso.example/';
 const threatChecker = { isMalicious: async (url: string) => url === MALICIOUS_URL };
-const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL, { threatChecker }), BASE_URL);
+// Relógio fixo para as datas das estatísticas não dependerem do dia em que o teste roda.
+const NOW = new Date('2026-11-25T12:00:00Z');
+const TODAY = '2026-11-25';
+const repository = new SqliteUrlRepository(':memory:');
+const server = createApiServer(new UrlShortenerService(repository, BASE_URL, { threatChecker, clicks: repository, now: () => NOW }), BASE_URL);
 let apiUrl: string;
 
 before(async () => {
@@ -142,19 +147,21 @@ test('devolve as estatísticas em JSON, com os cliques por dia', async () => {
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') ?? '', /application\/json/);
 
-    const today = new Date().toISOString().slice(0, 10);
-    assert.deepEqual(await res.json(), { code, totalClicks: 1, clicksByDay: [{ date: today, clicks: 1 }] });
+    assert.deepEqual(await res.json(), { code, totalClicks: 1, clicksByDay: [{ date: TODAY, clicks: 1 }] });
     assert.equal((await fetch(statsUrl(code), { method: 'HEAD' })).status, 200);
 });
 
 test('redireciona mesmo quando a gravação do clique falha', async (t) => {
     t.mock.method(console, 'error', () => {});
-    const repository = new SqliteUrlRepository(':memory:');
-    repository.addClick = async () => {
-        throw new Error('falha simulada ao gravar o clique');
+    const clicks = {
+        ...NO_CLICK_REPOSITORY,
+        addClick: async () => {
+            throw new Error('falha simulada ao gravar o clique');
+        },
     };
 
-    const failingServer = createApiServer(new UrlShortenerService(repository, BASE_URL), BASE_URL);
+    const failingService = new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL, { clicks });
+    const failingServer = createApiServer(failingService, BASE_URL);
     await new Promise<void>(resolve => failingServer.listen(0, resolve));
     const failingUrl = `http://localhost:${(failingServer.address() as AddressInfo).port}`;
 

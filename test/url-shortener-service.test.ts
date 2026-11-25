@@ -3,13 +3,18 @@ import { test } from 'node:test';
 import { InvalidUrlError, UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { STATS_DAYS, UrlShortenerService, type UrlShortenerOptions } from '../src/backend/url-shortener-service.ts';
 import type { UrlThreatChecker } from '../src/backend/url-threat-checker.ts';
+import { NO_CLICK_REPOSITORY } from '../src/data/click-repository.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
 
 const BASE_URL = 'https://encurta.do/';
 const MALICIOUS_URL = 'https://malicioso.example/';
 
 const sequence = (...codes: string[]) => () => codes.shift() ?? 'fim';
-const createService = (options?: UrlShortenerOptions) => new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL, options);
+/** Serviço com URLs e cliques no mesmo banco em memória, como no main.ts. */
+function createService(options?: UrlShortenerOptions) {
+    const repository = new SqliteUrlRepository(':memory:');
+    return new UrlShortenerService(repository, BASE_URL, { clicks: repository, ...options });
+}
 
 /** Checker falso que marca só MALICIOUS_URL e guarda as URLs consultadas. */
 function fakeChecker(checked: string[] = []): UrlThreatChecker {
@@ -143,12 +148,14 @@ test('resolve não conta clique e código inexistente não tem estatísticas', a
 
 test('falha ao registrar o clique não impede o redirecionamento', async (t) => {
     const errorLog = t.mock.method(console, 'error', () => {});
-    const repository = new SqliteUrlRepository(':memory:');
-    repository.addClick = async () => {
-        throw new Error('falha simulada ao gravar o clique');
+    const clicks = {
+        ...NO_CLICK_REPOSITORY,
+        addClick: async () => {
+            throw new Error('falha simulada ao gravar o clique');
+        },
     };
 
-    const service = new UrlShortenerService(repository, BASE_URL);
+    const service = createService({ clicks });
     const code = await service.shorten('https://example.com/');
     assert.equal(await service.visit(code), 'https://example.com/');
     assert.equal(errorLog.mock.callCount(), 1);
