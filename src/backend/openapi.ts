@@ -1,5 +1,5 @@
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from './alias-validator.ts';
-import { QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { EXPIRATION_OPTIONS } from './expiration.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
 import { STATS_DAYS } from './url-shortener-service.ts';
@@ -110,6 +110,21 @@ export function createOpenApiSpec(baseUrl: string) {
                             description: 'Redireciona para a URL original',
                             headers: { Location: { schema: { type: 'string', format: 'uri' } } },
                         },
+                        404: errorResponse('Código não encontrado'),
+                        410: LINK_EXPIRED_RESPONSE,
+                        429: TOO_MANY_REQUESTS_RESPONSE,
+                    },
+                },
+            },
+            [`/{code}${PREVIEW_SUFFIX}`]: {
+                get: {
+                    summary: 'Mostra o destino do link curto, sem redirecionar',
+                    description: 'Página HTML com o domínio e a URL de destino e um link "Continuar". Não conta clique. '
+                        + `Também aceita o sufixo codificado (${encodeURIComponent(PREVIEW_SUFFIX)}). `
+                        + 'O idioma vem do header Accept-Language. O título da página de destino não é buscado.',
+                    parameters: [CODE_PARAMETER],
+                    responses: {
+                        200: { description: 'Página de pré-visualização', content: { 'text/html': { schema: { type: 'string' } } } },
                         404: errorResponse('Código não encontrado'),
                         410: LINK_EXPIRED_RESPONSE,
                         429: TOO_MANY_REQUESTS_RESPONSE,

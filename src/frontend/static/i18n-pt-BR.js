@@ -42,6 +42,12 @@ const ptBR = {
     COMPARTILHAR_TELEGRAM: 'Compartilhar no Telegram',
     COMPARTILHAR_X: 'Compartilhar no X',
     COMPARTILHAR_EMAIL: 'Compartilhar por e-mail',
+    DICA_PREVIA: 'Dica: adicione + no fim do link curto para ver o destino antes de abrir.',
+    TITULO_PREVIA: 'Destino do link',
+    TEXTO_PREVIA: 'Este link curto leva para:',
+    ROTULO_URL_COMPLETA: 'URL completa:',
+    BOTAO_CONTINUAR: 'Continuar',
+    LINK_PAGINA_INICIAL: 'Encurtar outra URL',
 };
 
 /** @typedef {typeof ptBR} Traducao */

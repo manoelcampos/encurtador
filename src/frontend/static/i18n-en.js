@@ -43,6 +43,12 @@ const en = {
     COMPARTILHAR_TELEGRAM: 'Share on Telegram',
     COMPARTILHAR_X: 'Share on X',
     COMPARTILHAR_EMAIL: 'Share by email',
+    DICA_PREVIA: 'Tip: add + to the end of the short link to see where it goes before opening it.',
+    TITULO_PREVIA: 'Link destination',
+    TEXTO_PREVIA: 'This short link goes to:',
+    ROTULO_URL_COMPLETA: 'Full URL:',
+    BOTAO_CONTINUAR: 'Continue',
+    LINK_PAGINA_INICIAL: 'Shorten another URL',
 };
 
 export default Object.freeze(en);

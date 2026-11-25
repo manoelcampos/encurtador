@@ -1,11 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { languagesFromHeader } from './accept-language.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
+import { previewLanguage, previewPageHtml } from '../frontend/preview-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { createQrCodeSvg } from './qr-code.ts';
@@ -24,6 +26,17 @@ const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
 const routeOf = (path: string) => new RegExp(`^${path.replace(CODE_PARAM, '([^/]+)')}$`);
 const QRCODE_ROUTE = routeOf(QRCODE_PATH);
 const STATS_ROUTE = routeOf(STATS_PATH);
+// A página de pré-visualização não tem JS: o CSP só libera o CSS embutido e impede que ela seja embutida em outro site.
+const PREVIEW_HEADERS = {
+    ...HTML_HEADERS,
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    Vary: 'Accept-Language',
+};
+// O navegador pode mandar o sufixo codificado (ex.: `%2B`), e o `URL` não decodifica o caminho.
+const PREVIEW_SUFFIXES = [PREVIEW_SUFFIX, encodeURIComponent(PREVIEW_SUFFIX)].map(suffix => suffix.toUpperCase());
 const CODE_NOT_FOUND_MESSAGE = 'Código não encontrado.';
 const TOO_MANY_REQUESTS = 429;
 const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de novo mais tarde.';
@@ -101,6 +114,11 @@ async function handleRequest(
         return sendStatic(res, path.slice(STATIC_PATH.length));
     }
 
+    const previewCode = previewCodeOf(path);
+    if (isRead && previewCode !== undefined && CODE_PATTERN.test(previewCode)) {
+        return sendPreview(service, previewCode, req, res);
+    }
+
     const code = path.slice(1);
     if (isRead && CODE_PATTERN.test(code)) {
         return redirect(service, code, req.method === 'GET', res);
@@ -149,6 +167,19 @@ function requireCode<T>(found: T | undefined): T {
 async function redirect(service: UrlShortenerService, code: string, countClick: boolean, res: ServerResponse) {
     const url = countClick ? await service.visit(code) : await service.resolve(code);
     send(res, 302, { Location: requireCode(url) });
+}
+
+/** Código pedido em `/{code}+` (ou `/{code}%2B`), ou undefined se o caminho não termina com o sufixo. */
+function previewCodeOf(path: string): string | undefined {
+    const suffix = PREVIEW_SUFFIXES.find(candidate => path.toUpperCase().endsWith(candidate));
+    return suffix ? path.slice(1, -suffix.length) : undefined;
+}
+
+/** Mostra o destino sem redirecionar. Não conta clique; link expirado dá 410, como no redirecionamento. */
+async function sendPreview(service: UrlShortenerService, code: string, req: IncomingMessage, res: ServerResponse) {
+    const url = requireCode(await service.resolve(code));
+    const language = previewLanguage(languagesFromHeader(req.headers['accept-language']));
+    send(res, 200, PREVIEW_HEADERS, previewPageHtml(url, language, HOME_PATH));
 }
 
 async function sendStatic(res: ServerResponse, name: string) {
