@@ -28,6 +28,7 @@ Os scripts abaixo devem existir no `package.json`. Atualize esta seção se muda
 | Rodar o build | `npm start` |
 
 Antes de concluir uma tarefa, rode testes, lint e build, e corrija o que falhar.
+O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo push para `main` e em todo pull request, com a versão do Node definida em `engines` no `package.json`.
 
 ## Estrutura
 
