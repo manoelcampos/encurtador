@@ -20,6 +20,8 @@ export const HOME_PAGE_HTML = `<!doctype html>
         #erro { color: #b42318; margin: .5rem 0 0; min-height: 1.5em; }
         #resultado { margin-top: 1rem; word-break: break-all; }
         a { color: #0b3d91; }
+        #acoes { margin-top: .5rem; }
+        #aviso { margin: .5rem 0 0; min-height: 1.5em; }
     </style>
 </head>
 <body>
@@ -37,6 +39,10 @@ export const HOME_PAGE_HTML = `<!doctype html>
         <div aria-live="polite">
             <p id="resultado" hidden>Link curto: <a id="link"></a></p>
         </div>
+        <div id="acoes" class="row" hidden>
+            <button type="button" id="copiar">Copiar link</button>
+        </div>
+        <p id="aviso" role="status"></p>
     </main>
     <script>
         const form = document.getElementById('form');
@@ -45,12 +51,15 @@ export const HOME_PAGE_HTML = `<!doctype html>
         const erro = document.getElementById('erro');
         const resultado = document.getElementById('resultado');
         const link = document.getElementById('link');
+        const acoes = document.getElementById('acoes');
+        const aviso = document.getElementById('aviso');
         const STATUS_URL_INVALIDA = 400;
         const MENSAGEM_PADRAO = 'Não foi possível encurtar a URL.';
 
         function mostrarErro(mensagem, urlInvalida) {
             erro.textContent = mensagem;
             resultado.hidden = true;
+            acoes.hidden = true;
             if (urlInvalida) {
                 input.setAttribute('aria-invalid', 'true');
                 input.focus();
@@ -61,7 +70,51 @@ export const HOME_PAGE_HTML = `<!doctype html>
             link.href = shortUrl;
             link.textContent = shortUrl;
             resultado.hidden = false;
+            acoes.hidden = false;
         }
+
+        const AVISO_COPIADO = 'Copiado!';
+        const AVISO_FALHA_COPIA = 'Não foi possível copiar. O link foi selecionado para você copiar manualmente.';
+
+        function selecionarLink() {
+            window.getSelection().selectAllChildren(link);
+        }
+
+        const ATRASO_AVISO_MS = 100;
+
+        // Outra URL pode ter sido encurtada enquanto a cópia rodava.
+        function linkMudou(copiado) {
+            return link.textContent !== copiado;
+        }
+
+        // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
+        function avisarCopia(copiado, mensagem) {
+            aviso.textContent = '';
+            setTimeout(() => {
+                if (!linkMudou(copiado)) aviso.textContent = mensagem;
+            }, ATRASO_AVISO_MS);
+        }
+
+        // Sem HTTPS, navigator.clipboard não existe: o TypeError cai no catch.
+        async function copiar(texto) {
+            try {
+                await navigator.clipboard.writeText(texto);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        async function copiarLink() {
+            const copiado = link.textContent;
+            const sucesso = await copiar(copiado);
+            if (linkMudou(copiado)) return;
+
+            avisarCopia(copiado, sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA);
+            if (!sucesso) selecionarLink();
+        }
+
+        document.getElementById('copiar').addEventListener('click', copiarLink);
 
         async function encurtar(url) {
             const res = await fetch('${SHORTEN_PATH}', {
@@ -85,6 +138,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
             event.preventDefault();
             // Limpa antes, para que o mesmo erro seja anunciado de novo pelo leitor de tela.
             erro.textContent = '';
+            aviso.textContent = '';
             input.removeAttribute('aria-invalid');
             button.disabled = true;
 
