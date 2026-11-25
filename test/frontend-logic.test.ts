@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { avisoDeCopia, linkMudou, mensagemDaApi, mensagemDeFalha, urlInvalida } from '../src/frontend/static/logic.js';
+import { avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, urlInvalida } from '../src/frontend/static/logic.js';
 import { AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
 
 test('usa a mensagem de erro da API quando ela vem no corpo', () => {
@@ -37,4 +37,61 @@ test('detecta quando o link mudou durante a cópia', () => {
 test('escolhe o aviso de cópia conforme o resultado', () => {
     assert.equal(avisoDeCopia(true), AVISO_COPIADO);
     assert.equal(avisoDeCopia(false), AVISO_FALHA_COPIA);
+});
+
+const LINK = 'https://encurta.do/a';
+const OUTRO_LINK = 'https://encurta.do/b';
+
+/** Dependências falsas da cópia; o atraso só roda quando o teste chama `rodarAtraso`. */
+function criarCopia(copiou: boolean, linkDepoisDaCopia = LINK) {
+    let link = LINK;
+    let acaoAtrasada = () => {};
+    const avisos: string[] = [];
+    const estado = { selecionou: false };
+    const deps = {
+        copiar: async () => {
+            link = linkDepoisDaCopia;
+            return copiou;
+        },
+        linkAtual: () => link,
+        avisar: (mensagem: string) => { avisos.push(mensagem); },
+        selecionar: () => { estado.selecionou = true; },
+        aposAtraso: (acao: () => void) => { acaoAtrasada = acao; },
+    };
+
+    return { deps, avisos, estado, trocarLink: (novo: string) => { link = novo; }, rodarAtraso: () => acaoAtrasada() };
+}
+
+test('cópia com sucesso limpa e depois avisa "Copiado!", sem selecionar o link', async () => {
+    const copia = criarCopia(true);
+    await copiarLink(copia.deps);
+    assert.deepEqual(copia.avisos, ['']);
+
+    copia.rodarAtraso();
+    assert.deepEqual(copia.avisos, ['', AVISO_COPIADO]);
+    assert.equal(copia.estado.selecionou, false);
+});
+
+test('falha na cópia avisa a falha e seleciona o link', async () => {
+    const copia = criarCopia(false);
+    await copiarLink(copia.deps);
+    copia.rodarAtraso();
+    assert.deepEqual(copia.avisos, ['', AVISO_FALHA_COPIA]);
+    assert.equal(copia.estado.selecionou, true);
+});
+
+test('não faz nada se o link mudou durante a cópia', async () => {
+    const copia = criarCopia(false, OUTRO_LINK);
+    await copiarLink(copia.deps);
+    copia.rodarAtraso();
+    assert.deepEqual(copia.avisos, []);
+    assert.equal(copia.estado.selecionou, false);
+});
+
+test('não avisa se o link mudou durante o atraso do aviso', async () => {
+    const copia = criarCopia(true);
+    await copiarLink(copia.deps);
+    copia.trocarLink(OUTRO_LINK);
+    copia.rodarAtraso();
+    assert.deepEqual(copia.avisos, ['']);
 });

@@ -45,3 +45,29 @@ export function linkMudou(copiado, atual) {
 export function avisoDeCopia(sucesso) {
     return sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA;
 }
+
+/**
+ * @typedef {object} DependenciasCopia
+ * @property {(texto: string) => Promise<boolean>} copiar copia o texto e diz se deu certo
+ * @property {() => string} linkAtual link mostrado agora
+ * @property {(mensagem: string) => void} avisar escreve o aviso para o leitor de tela
+ * @property {() => void} selecionar seleciona o link para cópia manual
+ * @property {(acao: () => void) => void} aposAtraso executa a ação depois do atraso do aviso
+ */
+
+/**
+ * Copia o link mostrado e avisa o resultado, sem avisar se outro link aparecer no meio.
+ * @param {DependenciasCopia} deps
+ */
+export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAtraso }) {
+    const copiado = linkAtual();
+    const sucesso = await copiar(copiado);
+    if (linkMudou(copiado, linkAtual())) return;
+
+    // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
+    avisar('');
+    aposAtraso(() => {
+        if (!linkMudou(copiado, linkAtual())) avisar(avisoDeCopia(sucesso));
+    });
+    if (!sucesso) selecionar();
+}

@@ -122,7 +122,7 @@ test('serve todos os arquivos JS da interface, em GET e HEAD', async () => {
 });
 
 test('não serve arquivos fora da pasta estática nem de tipo não permitido', async () => {
-    const paths = ['nao-existe.js', '..%2f..%2fpackage.json', '..%2fhome-page.ts', '%2e%2e/home-page.ts', 'sub/main.js', '', 'main'];
+    const paths = ['nao-existe.js', '..%2f..%2fpackage.json', '..%2fhome-page.ts', '%2e%2e/home-page.ts', '..%5cstatic-files.ts', 'sub/main.js', '', 'main'];
     for (const path of paths) {
         assert.equal((await fetch(`${apiUrl}${STATIC_PATH}${path}`)).status, 404, path);
     }

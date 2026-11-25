@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
-import { avisoDeCopia, linkMudou, mensagemDeFalha, urlInvalida } from './logic.js';
+import { copiarLink, mensagemDeFalha, urlInvalida } from './logic.js';
 
 /**
  * @template {Element} T
@@ -59,18 +59,6 @@ function selecionarLink() {
 const ATRASO_AVISO_MS = 100;
 
 /**
- * Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
- * @param {string} copiado
- * @param {string} mensagem
- */
-function avisarCopia(copiado, mensagem) {
-    aviso.textContent = '';
-    setTimeout(() => {
-        if (!linkMudou(copiado, link.textContent)) aviso.textContent = mensagem;
-    }, ATRASO_AVISO_MS);
-}
-
-/**
  * Sem HTTPS, navigator.clipboard não existe: o TypeError cai no catch.
  * @param {string} texto
  */
@@ -83,16 +71,17 @@ async function copiar(texto) {
     }
 }
 
-async function copiarLink() {
-    const copiado = link.textContent;
-    const sucesso = await copiar(copiado);
-    if (linkMudou(copiado, link.textContent)) return;
+const dependenciasCopia = {
+    copiar,
+    linkAtual: () => link.textContent,
+    /** @param {string} mensagem */
+    avisar: mensagem => { aviso.textContent = mensagem; },
+    selecionar: selecionarLink,
+    /** @param {() => void} acao */
+    aposAtraso: acao => { setTimeout(acao, ATRASO_AVISO_MS); },
+};
 
-    avisarCopia(copiado, avisoDeCopia(sucesso));
-    if (!sucesso) selecionarLink();
-}
-
-elemento('copiar', HTMLButtonElement).addEventListener('click', copiarLink);
+elemento('copiar', HTMLButtonElement).addEventListener('click', () => copiarLink(dependenciasCopia));
 
 form.addEventListener('submit', async event => {
     event.preventDefault();
