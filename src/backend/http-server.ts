@@ -170,7 +170,7 @@ function sendError(res: ServerResponse, error: unknown) {
     }
 
     if (error instanceof InvalidUrlError) {
-        return sendJson(res, 400, { error: error.message });
+        return sendJson(res, 400, { error: error.message, code: error.code });
     }
 
     console.error(error);

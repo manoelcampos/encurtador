@@ -19,7 +19,7 @@ type Env = Record<string, string>;
 /** Sobe um servidor com os limites das variáveis dadas, executa o teste e o fecha. */
 async function withServer(env: Env, run: (apiUrl: string) => Promise<void>) {
     const limits = rateLimitsFromEnv({ CREATE_RATE_LIMIT: CREATE_LIMIT, ACCESS_RATE_LIMIT: ACCESS_LIMIT, ...env });
-    const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:')), BASE_URL, limits);
+    const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), BASE_URL), BASE_URL, limits);
     await new Promise<void>(resolve => server.listen(0, resolve));
     try {
         await run(`http://localhost:${(server.address() as AddressInfo).port}`);

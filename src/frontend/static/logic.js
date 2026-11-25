@@ -20,11 +20,44 @@ const EXTENSAO_QRCODE = '.svg';
  * @returns {string}
  */
 export function mensagemDaApi(dados, status, retryAfter = null) {
-    if (urlInvalida(status)) return texto('MENSAGEM_URL_INVALIDA');
+    if (urlInvalida(status)) return mensagemDeUrlRecusada(campoTexto(dados, 'code'));
     if (status === STATUS_LIMITE_EXCEDIDO) return mensagemDeLimite(retryAfter);
 
-    const erro = typeof dados === 'object' && dados !== null && 'error' in dados ? dados.error : undefined;
-    return typeof erro === 'string' ? erro : texto('MENSAGEM_PADRAO');
+    return campoTexto(dados, 'error') ?? texto('MENSAGEM_PADRAO');
+}
+
+/**
+ * Chave da tradução para cada `code` de erro 400 da API. Deve ter os mesmos códigos que o
+ * UrlErrorCode do backend (há teste).
+ * @type {Readonly<Record<string, import('./messages.js').ChaveDeTexto>>}
+ */
+export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
+    INVALID_URL: 'MENSAGEM_URL_INVALIDA',
+    OWN_DOMAIN: 'MENSAGEM_URL_PROPRIO_ENCURTADOR',
+    PRIVATE_NETWORK: 'MENSAGEM_URL_REDE_LOCAL',
+    MALICIOUS_URL: 'MENSAGEM_URL_MALICIOSA',
+});
+
+/**
+ * Mensagem traduzida para a URL recusada; a de URL inválida quando o código falta ou é desconhecido.
+ * @param {string | undefined} codigo
+ */
+function mensagemDeUrlRecusada(codigo) {
+    const chave = codigo !== undefined && Object.hasOwn(CHAVES_DOS_CODIGOS_DE_ERRO, codigo)
+        ? CHAVES_DOS_CODIGOS_DE_ERRO[codigo]
+        : 'MENSAGEM_URL_INVALIDA';
+    return texto(chave);
+}
+
+/**
+ * Valor do campo do corpo JSON, se for texto.
+ * @param {unknown} dados
+ * @param {string} campo
+ * @returns {string | undefined}
+ */
+function campoTexto(dados, campo) {
+    const valor = typeof dados === 'object' && dados !== null ? /** @type {Record<string, unknown>} */ (dados)[campo] : undefined;
+    return typeof valor === 'string' ? valor : undefined;
 }
 
 /**

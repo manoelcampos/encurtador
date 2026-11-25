@@ -1,4 +1,5 @@
 import { QRCODE_PATH, SHORTEN_PATH } from './api-paths.ts';
+import { UrlErrorCode } from './invalid-url-error.ts';
 import { MAX_URL_LENGTH } from './url-validator.ts';
 
 const CODE_PARAMETER = { name: 'code', in: 'path', required: true, schema: { type: 'string' } };
@@ -38,7 +39,11 @@ export function createOpenApiSpec(baseUrl: string) {
                             description: 'URL encurtada',
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/ShortenResponse' } } },
                         },
-                        400: errorResponse('JSON ou URL inválidos'),
+                        400: {
+                            description: 'JSON ou URL inválidos, ou URL recusada (próprio encurtador, rede local ou maliciosa). '
+                                + 'Quando a URL é recusada, `code` diz o motivo.',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+                        },
                         413: errorResponse('Corpo da requisição grande demais'),
                         429: TOO_MANY_REQUESTS_RESPONSE,
                     },
@@ -94,6 +99,13 @@ export function createOpenApiSpec(baseUrl: string) {
                 Error: {
                     type: 'object',
                     properties: { error: { type: 'string' } },
+                },
+                UrlError: {
+                    type: 'object',
+                    properties: {
+                        error: { type: 'string' },
+                        code: { type: 'string', enum: Object.values(UrlErrorCode) },
+                    },
                 },
             },
         },

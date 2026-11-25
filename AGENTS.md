@@ -43,7 +43,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `logic.js`: regras sem DOM, testadas com `node --test`.
     - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
-    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português.
+    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400` e `429`, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
 - `test/`: testes automatizados.
 
@@ -61,7 +61,21 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
-Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://localhost:PORT`) e `DB_PATH` (padrão `encurtador.db`).
+Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://localhost:PORT`), `DB_PATH` (padrão `encurtador.db`) e `SAFE_BROWSING_API_KEY` (veja abaixo).
+
+### URLs recusadas
+
+O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}`. O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
+
+| `code` | Motivo |
+|--------|--------|
+| `INVALID_URL` | URL ausente, malformada, longa demais ou sem `http`/`https`. |
+| `OWN_DOMAIN` | Mesmo host da `BASE_URL` (minúsculas, sem ponto final, qualquer porta). Evita loops de redirecionamento. |
+| `PRIVATE_NETWORK` | `localhost`, `*.localhost` ou IP de loopback, privado, link-local, `0.0.0.0/8`, CGNAT, `::`, `::1`, `fc00::/7`, `fe80::/10` (inclusive IPv4 mapeado em IPv6 e formas como `2130706433`, que o `URL` normaliza). Só olha o host literal, sem resolver DNS: um domínio público que aponta para IP privado passa, o que é aceitável porque o encurtador só redireciona e nunca acessa a URL. |
+| `MALICIOUS_URL` | Marcada como maliciosa pelo `UrlThreatChecker` injetado no `UrlShortenerService`. |
+
+O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
+Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.
 
 ### Limite de requisições por IP
 
@@ -108,7 +122,7 @@ IPv4 (inclusive mapeado em IPv6, como `::ffff:203.0.113.1`) é limitado por ende
 
 ## Segurança
 
-- Valide toda URL recebida: aceite apenas `http` e `https` e rejeite entradas malformadas.
+- Valide toda URL recebida: aceite apenas `http` e `https` e rejeite entradas malformadas, links do próprio encurtador, de rede local e maliciosos (veja "URLs recusadas").
 - Gere códigos curtos com `crypto` (não use `Math.random`).
 - Nunca registre em log nem faça commit de segredos (`.env`, tokens, credenciais).
 
