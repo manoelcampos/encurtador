@@ -1,5 +1,7 @@
-import { SHORTEN_PATH } from './api-paths.ts';
+import { QRCODE_PATH, SHORTEN_PATH } from './api-paths.ts';
 import { MAX_URL_LENGTH } from './url-validator.ts';
+
+const CODE_PARAMETER = { name: 'code', in: 'path', required: true, schema: { type: 'string' } };
 
 const errorResponse = (description: string) => ({
     description,
@@ -34,11 +36,25 @@ export function createOpenApiSpec(baseUrl: string) {
                     },
                 },
             },
+            [QRCODE_PATH]: {
+                get: {
+                    summary: 'QR Code do link curto',
+                    description: 'Imagem SVG do QR Code que abre o link curto.',
+                    parameters: [CODE_PARAMETER],
+                    responses: {
+                        200: {
+                            description: 'QR Code em SVG',
+                            content: { 'image/svg+xml': { schema: { type: 'string' } } },
+                        },
+                        404: errorResponse('Código não encontrado'),
+                    },
+                },
+            },
             '/{code}': {
                 get: {
                     summary: 'Redireciona para a URL original',
                     description: 'O Swagger UI segue o redirecionamento, então teste esta rota direto no navegador.',
-                    parameters: [{ name: 'code', in: 'path', required: true, schema: { type: 'string' } }],
+                    parameters: [CODE_PARAMETER],
                     responses: {
                         302: {
                             description: 'Redireciona para a URL original',

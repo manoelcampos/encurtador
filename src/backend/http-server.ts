@@ -1,13 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from './api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
+import { createQrCodeSvg } from './qr-code.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
 import type { UrlShortenerService } from './url-shortener-service.ts';
 
@@ -17,6 +18,8 @@ const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
 const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
 // Só nomes simples (sem barras nem "..") dentro de STATIC_DIR, o que impede path traversal.
 const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
+const QRCODE_ROUTE = new RegExp(`^${QRCODE_PATH.replace(CODE_PARAM, '([^/]+)')}$`);
+const CODE_NOT_FOUND_MESSAGE = 'Código não encontrado.';
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
@@ -56,6 +59,11 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return shorten(service, baseUrl, req, res);
     }
 
+    const qrCode = path.match(QRCODE_ROUTE)?.[1];
+    if (isRead && qrCode && CODE_PATTERN.test(qrCode)) {
+        return sendQrCode(service, baseUrl, qrCode, res);
+    }
+
     if (isRead && path.startsWith(STATIC_PATH)) {
         return sendStatic(res, path.slice(STATIC_PATH.length));
     }
@@ -68,20 +76,31 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
     throw new HttpError(404, NOT_FOUND_MESSAGE);
 }
 
+const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).href;
+
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
     const code = await service.shorten(body?.url);
-    const shortUrl = new URL(code, baseUrl).href;
-    sendJson(res, 201, { code, shortUrl });
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl) });
+}
+
+async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
+    await requireUrl(service, code);
+    send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(code, baseUrl)));
+}
+
+/** Retorna a URL original do código, ou lança 404 se ele não existir. */
+async function requireUrl(service: UrlShortenerService, code: string): Promise<string> {
+    const url = await service.resolve(code);
+    if (!url) {
+        throw new HttpError(404, CODE_NOT_FOUND_MESSAGE);
+    }
+
+    return url;
 }
 
 async function redirect(service: UrlShortenerService, code: string, res: ServerResponse) {
-    const url = await service.resolve(code);
-    if (!url) {
-        throw new HttpError(404, 'Código não encontrado.');
-    }
-
-    send(res, 302, { Location: url });
+    send(res, 302, { Location: await requireUrl(service, code) });
 }
 
 async function sendStatic(res: ServerResponse, name: string) {

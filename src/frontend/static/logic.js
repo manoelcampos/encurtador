@@ -1,7 +1,11 @@
 // Regras da página sem DOM, testáveis com node --test.
-import { AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from './messages.js';
+import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from './messages.js';
 
 const STATUS_URL_INVALIDA = 400;
+/** Marcador do código na rota do QR Code. Deve ser igual ao CODE_PARAM do backend. */
+export const MARCADOR_CODIGO = '{code}';
+const PREFIXO_ARQUIVO_QRCODE = 'qrcode-';
+const EXTENSAO_QRCODE = '.svg';
 
 /**
  * Mensagem de erro a partir do corpo da resposta da API.
@@ -70,4 +74,26 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
         if (!linkMudou(copiado, linkAtual())) avisar(avisoDeCopia(sucesso));
     });
     if (!sucesso) selecionar();
+}
+
+/**
+ * Código curto, que é o último trecho do caminho do link curto.
+ * @param {string} shortUrl
+ */
+export function codigoDoLink(shortUrl) {
+    return new URL(shortUrl).pathname.split('/').pop() ?? '';
+}
+
+/**
+ * Endereço, nome do arquivo para download e texto alternativo do QR Code do link curto.
+ * @param {string} rotaQrCode rota da API com o marcador do código
+ * @param {string} shortUrl
+ */
+export function qrCodeDoLink(rotaQrCode, shortUrl) {
+    const codigo = codigoDoLink(shortUrl);
+    return {
+        src: rotaQrCode.replace(MARCADOR_CODIGO, encodeURIComponent(codigo)),
+        nomeArquivo: PREFIXO_ARQUIVO_QRCODE + codigo + EXTENSAO_QRCODE,
+        alt: `${ALT_QRCODE} ${shortUrl}`,
+    };
 }
