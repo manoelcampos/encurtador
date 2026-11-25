@@ -1,3 +1,4 @@
+import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from './alias-validator.ts';
 import { QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
 import { STATS_DAYS } from './url-shortener-service.ts';
@@ -41,12 +42,21 @@ export function createOpenApiSpec(baseUrl: string) {
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/ShortenResponse' } } },
                         },
                         400: {
-                            description: 'JSON ou URL inválidos, ou URL recusada (próprio encurtador, rede local ou maliciosa). '
-                                + 'Quando a URL é recusada, `code` diz o motivo.',
+                            description: 'JSON ou URL inválidos, URL recusada (próprio encurtador, rede local ou maliciosa) '
+                                + 'ou apelido fora do formato. Quando a URL ou o apelido são recusados, `code` diz o motivo.',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+                        },
+                        409: {
+                            description: 'Apelido já em uso ou reservado pela aplicação (`code` = `ALIAS_TAKEN`).',
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
                         },
                         413: errorResponse('Corpo da requisição grande demais'),
                         429: TOO_MANY_REQUESTS_RESPONSE,
+                        503: {
+                            description: 'Apelidos desativados (`code` = `ALIAS_UNAVAILABLE`), porque o banco tem códigos antigos '
+                                + 'que só diferem em maiúsculas. Encurte sem apelido.',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+                        },
                     },
                 },
             },
@@ -105,6 +115,14 @@ export function createOpenApiSpec(baseUrl: string) {
                     required: ['url'],
                     properties: {
                         url: { type: 'string', format: 'uri', maxLength: MAX_URL_LENGTH, example: 'https://example.com/pagina' },
+                        alias: {
+                            type: 'string',
+                            description: 'Apelido opcional usado como código do link. Letras, números e hífen, sem hífen no início ou no fim. '
+                                + 'Não diferencia maiúsculas: é gravado em minúsculas.',
+                            minLength: ALIAS_MIN_LENGTH,
+                            maxLength: ALIAS_MAX_LENGTH,
+                            example: 'promo-natal',
+                        },
                     },
                 },
                 ShortenResponse: {

@@ -59,6 +59,23 @@ test('400 com code usa a mensagem traduzida do motivo; code desconhecido usa a d
     }
 });
 
+test('envia o apelido e lança ApiError 409 com o código ALIAS_TAKEN', async () => {
+    let corpo: unknown;
+    globalThis.fetch = async (_input, init) => {
+        corpo = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ error: 'Em uso.', code: 'ALIAS_TAKEN' }), { status: 409 });
+    };
+
+    await assert.rejects(encurtar(SHORTEN_PATH, URL_LONGA, 'promo'), (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 409);
+        assert.equal(error.codigo, 'ALIAS_TAKEN');
+        assert.equal(error.message, texto('MENSAGEM_APELIDO_EM_USO'));
+        return true;
+    });
+    assert.deepEqual(corpo, { url: URL_LONGA, alias: 'promo' });
+});
+
 test('os códigos de erro do frontend são os mesmos do backend', () => {
     assert.deepEqual(Object.keys(CHAVES_DOS_CODIGOS_DE_ERRO).sort(), Object.values(UrlErrorCode).sort());
 });

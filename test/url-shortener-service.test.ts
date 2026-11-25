@@ -43,6 +43,58 @@ test('gera outro código quando há colisão', async () => {
     assert.equal(await service.resolve('a'), 'https://um.com/');
 });
 
+test('sem apelido continua gerando o código', async () => {
+    const service = createService({ generateCode: sequence('Gerado') });
+    assert.equal(await service.shorten('https://um.com', undefined), 'Gerado');
+});
+
+test('apelido é gravado em minúsculas e os cliques e estatísticas vão para ele', async () => {
+    const service = createService({ generateCode: () => assert.fail('não deve gerar código') });
+    assert.equal(await service.shorten('https://um.com', 'Promo'), 'promo');
+    assert.equal(await service.visit('PROMO'), 'https://um.com/');
+    assert.equal((await service.stats('Promo'))?.code, 'promo');
+    assert.equal((await service.stats('promo'))?.totalClicks, 1);
+});
+
+test('código gerado continua diferenciando maiúsculas', async () => {
+    const service = createService({ generateCode: sequence('AbcDef') });
+    await service.shorten('https://gerado.com');
+    assert.equal(await service.resolve('AbcDef'), 'https://gerado.com/');
+    assert.equal(await service.resolve('ABCDEF'), undefined);
+    assert.equal(await service.resolve('abcdef'), undefined);
+});
+
+test('apelido em uso lança ALIAS_TAKEN; formato inválido lança INVALID_ALIAS antes de consultar o provedor externo', async () => {
+    const checked: string[] = [];
+    const service = createService({ threatChecker: fakeChecker(checked) });
+    await service.shorten('https://um.com', 'promo');
+    await rejectsWith(service.shorten('https://dois.com', 'promo'), UrlErrorCode.ALIAS_TAKEN);
+    await rejectsWith(service.shorten('https://tres.com', 'x'), UrlErrorCode.INVALID_ALIAS);
+    assert.deepEqual(checked, ['https://um.com/', 'https://dois.com/']);
+});
+
+test('apelido igual a um código gerado em outra caixa dá ALIAS_TAKEN', async () => {
+    const service = createService({ generateCode: sequence('Xk7Pq2Rt9') });
+    await service.shorten('https://gerado.com');
+    await rejectsWith(service.shorten('https://phishing.com', 'xk7pq2rt9'), UrlErrorCode.ALIAS_TAKEN);
+    assert.equal(await service.resolve('xk7pq2rt9'), undefined);
+});
+
+test('código gerado igual a um apelido em outra caixa é trocado por outro', async () => {
+    const service = createService({ generateCode: sequence('PROMO', 'Outro') });
+    await service.shorten('https://apelido.com', 'promo');
+    assert.equal(await service.shorten('https://gerado.com'), 'Outro');
+    assert.equal(await service.resolve('PROMO'), 'https://apelido.com/');
+});
+
+test('repositório sem unicidade ignorando maiúsculas recusa apelidos com ALIAS_UNAVAILABLE, mas gera códigos', async () => {
+    const sqlite = new SqliteUrlRepository(':memory:');
+    const legacyRepository = { uniqueIgnoringCase: false, add: sqlite.add.bind(sqlite), find: sqlite.find.bind(sqlite) };
+    const service = new UrlShortenerService(legacyRepository, BASE_URL, { generateCode: sequence('Gerado') });
+    await rejectsWith(service.shorten('https://um.com', 'promo'), UrlErrorCode.ALIAS_UNAVAILABLE);
+    assert.equal(await service.shorten('https://um.com'), 'Gerado');
+});
+
 test('falha após muitas colisões seguidas', async () => {
     const service = createService({ generateCode: () => 'sempre' });
     await service.shorten('https://um.com');

@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
-import { InvalidUrlError } from './invalid-url-error.ts';
+import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
@@ -27,6 +27,13 @@ const STATS_ROUTE = routeOf(STATS_PATH);
 const CODE_NOT_FOUND_MESSAGE = 'Código não encontrado.';
 const TOO_MANY_REQUESTS = 429;
 const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de novo mais tarde.';
+const BAD_REQUEST = 400;
+const CONFLICT = 409;
+const SERVICE_UNAVAILABLE = 503;
+const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
+    [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
+    [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
+};
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
@@ -112,13 +119,14 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const code = await service.shorten(body?.url);
+    const code = await service.shorten(body?.url, body?.alias);
     sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl) });
 }
 
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
-    requireCode(await service.resolve(code));
-    send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(code, baseUrl)));
+    // O QR Code leva o código gravado (ex.: o apelido em minúsculas), não o texto pedido.
+    const { code: storedCode } = requireCode(await service.find(code));
+    send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(storedCode, baseUrl)));
 }
 
 async function sendStats(service: UrlShortenerService, code: string, res: ServerResponse) {
@@ -167,12 +175,12 @@ async function readBody(req: IncomingMessage): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseJson(text: string): { url?: unknown } | undefined {
+function parseJson(text: string): { url?: unknown; alias?: unknown } | undefined {
     try {
         const value = JSON.parse(text);
         return typeof value === 'object' && value !== null ? value : undefined;
     } catch {
-        throw new HttpError(400, 'O corpo da requisição deve ser um JSON válido.');
+        throw new HttpError(BAD_REQUEST, 'O corpo da requisição deve ser um JSON válido.');
     }
 }
 
@@ -182,7 +190,8 @@ function sendError(res: ServerResponse, error: unknown) {
     }
 
     if (error instanceof InvalidUrlError) {
-        return sendJson(res, 400, { error: error.message, code: error.code });
+        const status = ERROR_STATUS[error.code] ?? BAD_REQUEST;
+        return sendJson(res, status, { error: error.message, code: error.code });
     }
 
     console.error(error);

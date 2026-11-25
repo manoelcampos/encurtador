@@ -42,6 +42,35 @@ test('abre banco da versão anterior, sem a tabela de cliques, e passa a contar'
     }
 });
 
+test('recusa código igual a outro ignorando maiúsculas', async () => {
+    const repository = new SqliteUrlRepository(':memory:');
+    assert.equal(repository.uniqueIgnoringCase, true);
+    assert.equal(await repository.add('AbC', 'https://um.com/'), true);
+    assert.equal(await repository.add('abc', 'https://dois.com/'), false);
+    assert.equal(await repository.find('AbC'), 'https://um.com/');
+});
+
+test('banco antigo com códigos que só diferem em maiúsculas abre sem quebrar e avisa no log', async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), 'encurtador-'));
+    const path = join(dir, 'duplicado.db');
+    createOldDatabase(path);
+    const old = new DatabaseSync(path);
+    old.prepare('INSERT INTO urls (code, url) VALUES (?, ?)').run('ANTIGO', 'https://outro.example/');
+    old.close();
+    const warn = t.mock.method(console, 'warn', () => {});
+
+    const repository = new SqliteUrlRepository(path);
+    try {
+        assert.equal(repository.uniqueIgnoringCase, false);
+        assert.equal(warn.mock.callCount(), 1);
+        assert.equal(await repository.find('antigo'), 'https://example.com/');
+        assert.equal(await repository.find('ANTIGO'), 'https://outro.example/');
+    } finally {
+        repository.close();
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test('recusa clique em código inexistente (chave estrangeira)', async () => {
     const repository = new SqliteUrlRepository(':memory:');
     await assert.rejects(repository.addClick('naoexiste', '2026-11-25'));

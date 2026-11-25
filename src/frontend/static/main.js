@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
-import { avisarDeNovo, copiarLink, mensagemDeFalha, qrCodeDoLink, urlInvalida } from './logic.js';
+import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
@@ -23,7 +23,8 @@ function exigir(el, tipo) {
 const elemento = (id, tipo) => exigir(document.getElementById(id), tipo);
 
 const form = elemento('form', HTMLFormElement);
-const input = elemento('url', HTMLInputElement);
+const input = elemento(CAMPO.URL, HTMLInputElement);
+const apelido = elemento(CAMPO.APELIDO, HTMLInputElement);
 const button = exigir(form.querySelector('button'), HTMLButtonElement);
 const erro = elemento('erro', HTMLElement);
 const rotuloLink = elemento('rotulo-link', HTMLElement);
@@ -44,9 +45,9 @@ let linkMostrado;
 
 /**
  * @param {string} mensagem
- * @param {boolean} invalida
+ * @param {string | undefined} campo id do campo a marcar como inválido (um dos valores de CAMPO)
  */
-function mostrarErro(mensagem, invalida) {
+function mostrarErro(mensagem, campo) {
     erro.textContent = mensagem;
     linkMostrado = undefined;
     rotuloLink.hidden = true;
@@ -55,9 +56,10 @@ function mostrarErro(mensagem, invalida) {
     acoes.hidden = true;
     redes.hidden = true;
     qrCode.hidden = true;
-    if (invalida) {
-        input.setAttribute('aria-invalid', 'true');
-        input.focus();
+    if (campo) {
+        const invalido = elemento(campo, HTMLInputElement);
+        invalido.setAttribute('aria-invalid', 'true');
+        invalido.focus();
     }
 }
 
@@ -155,12 +157,15 @@ form.addEventListener('submit', async event => {
     erro.textContent = '';
     aviso.textContent = '';
     input.removeAttribute('aria-invalid');
+    apelido.removeAttribute('aria-invalid');
     button.disabled = true;
 
     try {
-        mostrarLink(await encurtar(caminhoApi, input.value.trim()));
+        mostrarLink(await encurtar(caminhoApi, input.value.trim(), apelido.value.trim()));
+        // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
+        apelido.value = '';
     } catch (error) {
-        mostrarErro(mensagemDeFalha(error), error instanceof ApiError && urlInvalida(error.status));
+        mostrarErro(mensagemDeFalha(error), error instanceof ApiError ? campoInvalido(error.status, error.codigo) : undefined);
     } finally {
         button.disabled = false;
     }

@@ -9,6 +9,10 @@ const CREATE_URLS_TABLE = `
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`;
 
+// Sem dois códigos iguais ignorando maiúsculas: um apelido não pode imitar um código gerado (ou o inverso)
+// para quem digita o link com outra caixa. Como é índice único, o add falha em conflito de forma atômica.
+const CREATE_CODE_NOCASE_INDEX = 'CREATE UNIQUE INDEX IF NOT EXISTS urls_code_nocase ON urls (code COLLATE NOCASE)';
+
 // Um contador por código e dia mantém /stats barato mesmo com muitos cliques e guarda menos dados (LGPD).
 // IF NOT EXISTS também cria a tabela em bancos de versões anteriores, que não a tinham.
 const CREATE_CLICKS_DAILY_TABLE = `
@@ -25,6 +29,7 @@ const CREATE_CLICKS_DAILY_TABLE = `
  */
 export class SqliteUrlRepository implements UrlRepository, ClickRepository {
     readonly #db: DatabaseSync;
+    readonly uniqueIgnoringCase: boolean;
 
     constructor(path: string) {
         this.#db = new DatabaseSync(path);
@@ -35,12 +40,25 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         this.#db.exec('PRAGMA foreign_keys = ON');
         this.#db.exec(CREATE_URLS_TABLE);
         this.#db.exec(CREATE_CLICKS_DAILY_TABLE);
+        this.uniqueIgnoringCase = this.#createCodeNocaseIndex();
+    }
+
+    /** Bancos antigos podem ter códigos que só diferem em maiúsculas; aí o índice não é criado e a API inicia mesmo assim. */
+    #createCodeNocaseIndex(): boolean {
+        try {
+            this.#db.exec(CREATE_CODE_NOCASE_INDEX);
+            return true;
+        } catch (error) {
+            console.warn('Há códigos que só diferem em maiúsculas; novos apelidos ficam desativados:', error);
+            return false;
+        }
     }
 
     async add(code: string, url: string): Promise<boolean> {
         // DO NOTHING em vez de checar antes evita condição de corrida entre a checagem e a gravação.
+        // Sem alvo, vale para a chave primária e para o índice que ignora maiúsculas.
         const result = this.#db
-            .prepare('INSERT INTO urls (code, url) VALUES (?, ?) ON CONFLICT (code) DO NOTHING')
+            .prepare('INSERT INTO urls (code, url) VALUES (?, ?) ON CONFLICT DO NOTHING')
             .run(code, url);
         return result.changes === 1;
     }

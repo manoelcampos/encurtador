@@ -3,6 +3,7 @@ import { texto } from './messages.js';
 
 const STATUS_URL_INVALIDA = 400;
 const STATUS_LIMITE_EXCEDIDO = 429;
+const STATUS_CONFLITO = 409;
 const SEGUNDOS_POR_MINUTO = 60;
 const MARCADOR_MINUTOS = '{minutos}';
 const SEGUNDOS_INTEIROS = /^\d+$/;
@@ -13,21 +14,23 @@ const EXTENSAO_QRCODE = '.svg';
 
 /**
  * Mensagem de erro a partir da resposta da API.
- * A API só responde em português; para URL inválida e limite excedido, usa o texto traduzido do frontend.
+ * A API só responde em português; para URL ou apelido recusados e limite excedido, usa o texto traduzido do frontend.
  * @param {unknown} dados corpo JSON da resposta, ou `{}` se não era JSON
  * @param {number} status código HTTP da resposta
  * @param {string | null} [retryAfter] header Retry-After da resposta
  * @returns {string}
  */
 export function mensagemDaApi(dados, status, retryAfter = null) {
-    if (urlInvalida(status)) return mensagemDeUrlRecusada(campoTexto(dados, 'code'));
+    if (status === STATUS_CONFLITO) return texto('MENSAGEM_APELIDO_EM_USO');
+    if (status === STATUS_URL_INVALIDA) return mensagemDeUrlRecusada(campoTexto(dados, 'code'));
+    if (campoTexto(dados, 'code') === CODIGO_APELIDOS_INDISPONIVEIS) return texto('MENSAGEM_APELIDOS_INDISPONIVEIS');
     if (status === STATUS_LIMITE_EXCEDIDO) return mensagemDeLimite(retryAfter);
 
     return campoTexto(dados, 'error') ?? texto('MENSAGEM_PADRAO');
 }
 
 /**
- * Chave da tradução para cada `code` de erro 400 da API. Deve ter os mesmos códigos que o
+ * Chave da tradução para cada `code` de erro 400, 409 ou 503 da API. Deve ter os mesmos códigos que o
  * UrlErrorCode do backend (há teste).
  * @type {Readonly<Record<string, import('./messages.js').ChaveDeTexto>>}
  */
@@ -36,7 +39,19 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     OWN_DOMAIN: 'MENSAGEM_URL_PROPRIO_ENCURTADOR',
     PRIVATE_NETWORK: 'MENSAGEM_URL_REDE_LOCAL',
     MALICIOUS_URL: 'MENSAGEM_URL_MALICIOSA',
+    INVALID_ALIAS: 'MENSAGEM_APELIDO_INVALIDO',
+    ALIAS_TAKEN: 'MENSAGEM_APELIDO_EM_USO',
+    ALIAS_UNAVAILABLE: 'MENSAGEM_APELIDOS_INDISPONIVEIS',
 });
+
+/** Vem com status 503: o servidor desativou os apelidos. */
+const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
+
+/** Códigos de erro causados pelo apelido, não pela URL. */
+const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN', CODIGO_APELIDOS_INDISPONIVEIS]);
+
+/** Campos do formulário que a API pode recusar; os valores são os ids dos campos no HTML. */
+export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido' });
 
 /**
  * Mensagem traduzida para a URL recusada; a de URL inválida quando o código falta ou é desconhecido.
@@ -55,7 +70,7 @@ function mensagemDeUrlRecusada(codigo) {
  * @param {string} campo
  * @returns {string | undefined}
  */
-function campoTexto(dados, campo) {
+export function campoTexto(dados, campo) {
     const valor = typeof dados === 'object' && dados !== null ? /** @type {Record<string, unknown>} */ (dados)[campo] : undefined;
     return typeof valor === 'string' ? valor : undefined;
 }
@@ -95,11 +110,23 @@ export function mensagemDeFalha(error) {
 }
 
 /**
- * Se o campo de URL deve ser marcado como inválido.
+ * Campo a marcar como inválido para o erro da API, ou `undefined` se o erro não é de nenhum campo.
  * @param {number} status código HTTP da resposta
+ * @param {string | undefined} codigo campo `code` do corpo da resposta
+ * @returns {string | undefined} um dos valores de CAMPO
  */
-export function urlInvalida(status) {
-    return status === STATUS_URL_INVALIDA;
+export function campoInvalido(status, codigo) {
+    if (status === STATUS_CONFLITO || (codigo !== undefined && CODIGOS_DO_APELIDO.includes(codigo))) return CAMPO.APELIDO;
+    return status === STATUS_URL_INVALIDA ? CAMPO.URL : undefined;
+}
+
+/**
+ * Corpo do pedido para encurtar; o apelido só vai quando preenchido.
+ * @param {string} url
+ * @param {string} apelido
+ */
+export function corpoDoPedido(url, apelido) {
+    return apelido ? { url, alias: apelido } : { url };
 }
 
 /**

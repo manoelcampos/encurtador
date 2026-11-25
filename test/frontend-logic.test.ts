@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-    avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink, urlInvalida,
+    avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink,
+    CAMPO, campoInvalido, corpoDoPedido,
 } from '../src/frontend/static/logic.js';
 import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
 
@@ -27,7 +28,7 @@ test('usa a mensagem traduzida para URL inválida (400), e não a da API em port
 
 test('usa a mensagem traduzida de limite excedido (429), sem marcar o campo como inválido', () => {
     assert.equal(mensagemDaApi({ error: 'Limite de requisições excedido.' }, 429), texto('MENSAGEM_LIMITE_EXCEDIDO'));
-    assert.equal(urlInvalida(429), false);
+    assert.equal(campoInvalido(429, undefined), undefined);
     definirIdioma('en');
     try {
         assert.equal(mensagemDaApi({}, 429), TRADUCOES.en.MENSAGEM_LIMITE_EXCEDIDO);
@@ -67,11 +68,32 @@ test('mostra a mensagem do erro da API, ou a padrão se o erro não for Error', 
     assert.equal(mensagemDeFalha('qualquer coisa'), MENSAGEM_PADRAO);
 });
 
-test('marca o campo como inválido só para o status 400', () => {
-    assert.equal(urlInvalida(400), true);
+test('marca o campo de URL como inválido só para o status 400 sem código de apelido', () => {
+    assert.equal(campoInvalido(400, undefined), CAMPO.URL);
+    assert.equal(campoInvalido(400, 'OWN_DOMAIN'), CAMPO.URL);
     for (const status of [413, 500, 502]) {
-        assert.equal(urlInvalida(status), false);
+        assert.equal(campoInvalido(status, undefined), undefined);
     }
+});
+
+test('marca o campo de apelido, não o de URL, para apelido inválido ou em uso', () => {
+    assert.equal(campoInvalido(400, 'INVALID_ALIAS'), CAMPO.APELIDO);
+    assert.equal(campoInvalido(409, 'ALIAS_TAKEN'), CAMPO.APELIDO);
+    assert.equal(campoInvalido(409, undefined), CAMPO.APELIDO);
+});
+
+test('usa as mensagens traduzidas de apelido inválido (400) e em uso (409)', () => {
+    assert.equal(mensagemDaApi({ code: 'INVALID_ALIAS' }, 400), texto('MENSAGEM_APELIDO_INVALIDO'));
+    assert.equal(mensagemDaApi({ code: 'ALIAS_TAKEN' }, 409), texto('MENSAGEM_APELIDO_EM_USO'));
+    assert.equal(mensagemDaApi({}, 409), texto('MENSAGEM_APELIDO_EM_USO'));
+    assert.equal(mensagemDaApi({ error: 'x', code: 'ALIAS_UNAVAILABLE' }, 503), texto('MENSAGEM_APELIDOS_INDISPONIVEIS'));
+    assert.equal(mensagemDaApi({ error: 'Falhou.' }, 503), 'Falhou.');
+    assert.equal(campoInvalido(503, 'ALIAS_UNAVAILABLE'), CAMPO.APELIDO);
+});
+
+test('só envia o apelido quando preenchido', () => {
+    assert.deepEqual(corpoDoPedido('https://a.com', ''), { url: 'https://a.com' });
+    assert.deepEqual(corpoDoPedido('https://a.com', 'promo'), { url: 'https://a.com', alias: 'promo' });
 });
 
 test('detecta quando o link mudou durante a cópia', () => {
