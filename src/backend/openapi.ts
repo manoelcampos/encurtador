@@ -1,5 +1,6 @@
-import { QRCODE_PATH, SHORTEN_PATH } from './api-paths.ts';
+import { QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
+import { STATS_DAYS } from './url-shortener-service.ts';
 import { MAX_URL_LENGTH } from './url-validator.ts';
 
 const CODE_PARAMETER = { name: 'code', in: 'path', required: true, schema: { type: 'string' } };
@@ -64,10 +65,27 @@ export function createOpenApiSpec(baseUrl: string) {
                     },
                 },
             },
+            [STATS_PATH]: {
+                get: {
+                    summary: 'Estatísticas de cliques do link curto',
+                    description: `Total de cliques desde a criação e cliques por dia (UTC) nos últimos ${STATS_DAYS} dias, `
+                        + 'contando hoje. Dias sem cliques não aparecem.',
+                    parameters: [CODE_PARAMETER],
+                    responses: {
+                        200: {
+                            description: 'Estatísticas do link curto',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ClickStats' } } },
+                        },
+                        404: errorResponse('Código não encontrado'),
+                        429: TOO_MANY_REQUESTS_RESPONSE,
+                    },
+                },
+            },
             '/{code}': {
                 get: {
                     summary: 'Redireciona para a URL original',
-                    description: 'O Swagger UI segue o redirecionamento, então teste esta rota direto no navegador.',
+                    description: 'Cada GET que redireciona conta como um clique (HEAD não conta). '
+                        + 'O Swagger UI segue o redirecionamento, então teste esta rota direto no navegador.',
                     parameters: [CODE_PARAMETER],
                     responses: {
                         302: {
@@ -94,6 +112,23 @@ export function createOpenApiSpec(baseUrl: string) {
                     properties: {
                         code: { type: 'string', example: 'AbC234xYz' },
                         shortUrl: { type: 'string', format: 'uri', example: `${baseUrl}AbC234xYz` },
+                    },
+                },
+                ClickStats: {
+                    type: 'object',
+                    properties: {
+                        code: { type: 'string', example: 'AbC234xYz' },
+                        totalClicks: { type: 'integer', example: 3 },
+                        clicksByDay: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    date: { type: 'string', format: 'date', example: '2026-11-25' },
+                                    clicks: { type: 'integer', example: 3 },
+                                },
+                            },
+                        },
                     },
                 },
                 Error: {
