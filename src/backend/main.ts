@@ -1,0 +1,16 @@
+import { SqliteUrlRepository } from '../data/sqlite-url-repository.ts';
+import { createApiServer } from './http-server.ts';
+import { UrlShortenerService } from './url-shortener-service.ts';
+
+const DEFAULT_PORT = 3000;
+const DEFAULT_DB_PATH = 'encurtador.db';
+
+const dbPath = process.env.DB_PATH ?? DEFAULT_DB_PATH;
+const port = Number(process.env.PORT ?? DEFAULT_PORT);
+// A barra final garante que o código seja anexado ao caminho da BASE_URL, e não o substitua.
+const baseUrl = (process.env.BASE_URL ?? `http://localhost:${port}`).replace(/\/?$/, '/');
+
+const service = new UrlShortenerService(new SqliteUrlRepository(dbPath));
+createApiServer(service, baseUrl).listen(port, () => {
+    console.log(`API do encurtador ouvindo em ${baseUrl}`);
+});
