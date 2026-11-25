@@ -19,13 +19,14 @@ export class ApiError extends Error {
  * @param {string} caminho rota da API que encurta URLs
  * @param {string} url
  * @param {string} [apelido] apelido opcional; vazio gera um código
+ * @param {string} [validade] prazo de validade opcional (`expiresIn`); vazio é sem prazo
  * @returns {Promise<import('./logic.js').LinkCurto>}
  */
-export async function encurtar(caminho, url, apelido = '') {
+export async function encurtar(caminho, url, apelido = '', validade = '') {
     const res = await fetch(caminho, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(corpoDoPedido(url, apelido)),
+        body: JSON.stringify(corpoDoPedido(url, apelido, validade)),
     });
 
     // Um proxy pode devolver HTML (ex.: 502); nesse caso usa a mensagem padrão.
@@ -35,5 +36,5 @@ export async function encurtar(caminho, url, apelido = '') {
         throw new ApiError(mensagem, res.status, campoTexto(dados, 'code'));
     }
 
-    return { code: dados.code, shortUrl: dados.shortUrl };
+    return { code: dados.code, shortUrl: dados.shortUrl, expiresAt: dados.expiresAt ?? null };
 }

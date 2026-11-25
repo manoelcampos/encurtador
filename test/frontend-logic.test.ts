@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink,
-    CAMPO, campoInvalido, corpoDoPedido,
+    CAMPO, campoInvalido, corpoDoPedido, textoDaExpiracao,
 } from '../src/frontend/static/logic.js';
 import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
 
@@ -94,6 +94,27 @@ test('usa as mensagens traduzidas de apelido inválido (400) e em uso (409)', ()
 test('só envia o apelido quando preenchido', () => {
     assert.deepEqual(corpoDoPedido('https://a.com', ''), { url: 'https://a.com' });
     assert.deepEqual(corpoDoPedido('https://a.com', 'promo'), { url: 'https://a.com', alias: 'promo' });
+});
+
+test('só envia a validade quando escolhida', () => {
+    assert.deepEqual(corpoDoPedido('https://a.com', '', ''), { url: 'https://a.com' });
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '7d'), { url: 'https://a.com', expiresIn: '7d' });
+    assert.deepEqual(corpoDoPedido('https://a.com', 'promo', '1h'), { url: 'https://a.com', alias: 'promo', expiresIn: '1h' });
+});
+
+test('validade inválida marca o campo de validade e usa a mensagem traduzida', () => {
+    assert.equal(campoInvalido(400, 'INVALID_EXPIRATION'), CAMPO.VALIDADE);
+    assert.equal(mensagemDaApi({ error: 'x', code: 'INVALID_EXPIRATION' }, 400), texto('MENSAGEM_VALIDADE_INVALIDA'));
+});
+
+test('mostra a data de expiração formatada no idioma pedido, ou nada se o link não expira', () => {
+    const expiresAt = '2026-12-02T12:00:00.000Z';
+    const formato = (idioma: string) => new Intl.DateTimeFormat(idioma, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' });
+
+    assert.equal(textoDaExpiracao(null, 'pt-BR'), '');
+    assert.equal(textoDaExpiracao(expiresAt, 'pt-BR', 'UTC'), `${texto('ROTULO_EXPIRA_EM')} ${formato('pt-BR').format(new Date(expiresAt))}`);
+    assert.match(textoDaExpiracao(expiresAt, 'pt-BR', 'UTC'), /dezembro/);
+    assert.match(textoDaExpiracao(expiresAt, 'en', 'UTC'), /December/);
 });
 
 test('detecta quando o link mudou durante a cópia', () => {

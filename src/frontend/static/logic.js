@@ -42,7 +42,12 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     INVALID_ALIAS: 'MENSAGEM_APELIDO_INVALIDO',
     ALIAS_TAKEN: 'MENSAGEM_APELIDO_EM_USO',
     ALIAS_UNAVAILABLE: 'MENSAGEM_APELIDOS_INDISPONIVEIS',
+    INVALID_EXPIRATION: 'MENSAGEM_VALIDADE_INVALIDA',
+    // Só vem de /:code e do QR Code (410), não do POST; fica aqui para a lista seguir o backend.
+    LINK_EXPIRED: 'MENSAGEM_LINK_EXPIRADO',
 });
+
+const CODIGO_VALIDADE_INVALIDA = 'INVALID_EXPIRATION';
 
 /** Vem com status 503: o servidor desativou os apelidos. */
 const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
@@ -51,7 +56,7 @@ const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
 const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN', CODIGO_APELIDOS_INDISPONIVEIS]);
 
 /** Campos do formulário que a API pode recusar; os valores são os ids dos campos no HTML. */
-export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido' });
+export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido', VALIDADE: 'validade' });
 
 /**
  * Mensagem traduzida para a URL recusada; a de URL inválida quando o código falta ou é desconhecido.
@@ -117,16 +122,45 @@ export function mensagemDeFalha(error) {
  */
 export function campoInvalido(status, codigo) {
     if (status === STATUS_CONFLITO || (codigo !== undefined && CODIGOS_DO_APELIDO.includes(codigo))) return CAMPO.APELIDO;
+    if (codigo === CODIGO_VALIDADE_INVALIDA) return CAMPO.VALIDADE;
     return status === STATUS_URL_INVALIDA ? CAMPO.URL : undefined;
 }
 
 /**
- * Corpo do pedido para encurtar; o apelido só vai quando preenchido.
+ * Corpo do pedido para encurtar; o apelido e a validade só vão quando preenchidos.
  * @param {string} url
  * @param {string} apelido
+ * @param {string} [validade] uma das opções de prazo do backend (`expiresIn`); vazio é sem prazo
  */
-export function corpoDoPedido(url, apelido) {
-    return apelido ? { url, alias: apelido } : { url };
+export function corpoDoPedido(url, apelido, validade = '') {
+    return {
+        url,
+        ...(apelido && { alias: apelido }),
+        ...(validade && { expiresIn: validade }),
+    };
+}
+
+/**
+ * Chave da tradução do texto de uma opção de validade (ex.: `7d` → `VALIDADE_7D`). Há teste de que toda opção
+ * do backend tem tradução.
+ * @param {string} valor opção de prazo do backend
+ * @returns {import('./messages.js').ChaveDeTexto}
+ */
+export function chaveDaValidade(valor) {
+    return /** @type {import('./messages.js').ChaveDeTexto} */ (`VALIDADE_${valor.toUpperCase()}`);
+}
+
+/**
+ * Texto da data de expiração do link no idioma informado, ou vazio se o link não expira.
+ * @param {string | null} expiresAt data ISO 8601 devolvida pela API
+ * @param {string} idioma código BCP 47 do idioma atual
+ * @param {string} [fusoHorario] fuso da data mostrada; o padrão é o do navegador
+ */
+export function textoDaExpiracao(expiresAt, idioma, fusoHorario) {
+    if (!expiresAt) return '';
+
+    const formato = new Intl.DateTimeFormat(idioma, { dateStyle: 'long', timeStyle: 'short', timeZone: fusoHorario });
+    return `${texto('ROTULO_EXPIRA_EM')} ${formato.format(new Date(expiresAt))}`;
 }
 
 /**
@@ -189,6 +223,7 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
  * @typedef {object} LinkCurto
  * @property {string} code
  * @property {string} shortUrl
+ * @property {string | null} expiresAt data de expiração ISO 8601, ou null se o link não expira
  */
 
 /**

@@ -92,7 +92,7 @@ const postAlias = (alias: unknown, url = 'https://example.com/promo') => post(JS
 test('apelido livre cria o link, que redireciona sem diferenciar maiúsculas', async () => {
     const res = await postAlias('Promo-Natal');
     assert.equal(res.status, 201);
-    assert.deepEqual(await res.json(), { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal` });
+    assert.deepEqual(await res.json(), { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, expiresAt: null });
 
     for (const path of ['/promo-natal', '/PROMO-Natal']) {
         const redirect = await fetch(apiUrl + path, { redirect: 'manual' });
@@ -234,6 +234,50 @@ test('redireciona mesmo quando a gravação do clique falha', async (t) => {
     }
 });
 
+test('prazo de validade: redireciona antes, responde 410 depois (sem contar clique) e as estatísticas continuam', async () => {
+    let now = new Date('2026-11-25T12:00:00Z');
+    const sqlite = new SqliteUrlRepository(':memory:');
+    const expiringServer = createApiServer(new UrlShortenerService(sqlite, BASE_URL, { clicks: sqlite, now: () => now }), BASE_URL);
+    await new Promise<void>(resolve => expiringServer.listen(0, resolve));
+    const expiringUrl = `http://localhost:${(expiringServer.address() as AddressInfo).port}`;
+    const create = (body: object) => fetch(expiringUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify(body) });
+    const created = await create({ url: 'https://example.com/prazo', expiresIn: '1d' });
+    const aliasCreated = await create({ url: 'https://example.com/prazo-apelido', alias: 'prazo-promo', expiresIn: '1d' });
+
+    try {
+        assert.equal(created.status, 201);
+        assert.equal(aliasCreated.status, 201);
+        const { code, expiresAt } = await created.json();
+        assert.equal(expiresAt, '2026-11-26T12:00:00.000Z');
+        assert.equal((await fetch(`${expiringUrl}/${code}`, { redirect: 'manual' })).status, 302);
+
+        now = new Date(expiresAt);
+        const expired = await fetch(`${expiringUrl}/${code}`, { redirect: 'manual' });
+        assert.equal(expired.status, 410);
+        assert.equal((await expired.json()).code, UrlErrorCode.LINK_EXPIRED);
+        assert.equal((await fetch(`${expiringUrl}/${code}`, { method: 'HEAD', redirect: 'manual' })).status, 410);
+
+        const expiredAlias = await fetch(`${expiringUrl}/PRAZO-Promo`, { redirect: 'manual' });
+        assert.equal(expiredAlias.status, 410);
+        assert.equal((await expiredAlias.json()).code, UrlErrorCode.LINK_EXPIRED);
+        assert.equal((await fetch(expiringUrl + QRCODE_PATH.replace(CODE_PARAM, code))).status, 410);
+
+        const stats = await fetch(expiringUrl + STATS_PATH.replace(CODE_PARAM, code));
+        assert.equal(stats.status, 200);
+        assert.equal((await stats.json()).totalClicks, 1);
+    } finally {
+        expiringServer.close();
+    }
+});
+
+test('prazo de validade inválido devolve 400 com INVALID_EXPIRATION', async () => {
+    for (const expiresIn of ['2h', '', 30]) {
+        const res = await post(JSON.stringify({ url: 'https://example.com/', expiresIn }));
+        assert.equal(res.status, 400, String(expiresIn));
+        assert.equal((await res.json()).code, UrlErrorCode.INVALID_EXPIRATION);
+    }
+});
+
 test('devolve 404 para estatísticas de código inexistente ou inválido', async () => {
     for (const code of ['naoexiste', 'a.b', 'x'.repeat(65)]) {
         assert.equal((await fetch(statsUrl(code))).status, 404, code);
@@ -275,6 +319,8 @@ test('serve a interface web na raiz, apontando para a API de encurtar e para o J
     assert.match(html, /<label for="url"[ >]/);
     assert.match(html, /<label for="idioma"[ >]/);
     assert.match(html, /<select id="idioma">/);
+    assert.match(html, /<label for="validade"[ >]/);
+    assert.match(html, /<select id="validade" name="expiresIn"/);
     assert.match(html, new RegExp(`data-api="${SHORTEN_PATH}"`));
     assert.match(html, new RegExp(`<script type="module" src="${STATIC_PATH}main\\.js"></script>`));
 });

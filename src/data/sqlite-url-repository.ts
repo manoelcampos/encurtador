@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { ClickRepository, DailyClicks } from './click-repository.ts';
-import type { UrlRepository } from './url-repository.ts';
+import type { StoredUrl, UrlRepository } from './url-repository.ts';
 
 const CREATE_URLS_TABLE = `
     CREATE TABLE IF NOT EXISTS urls (
@@ -23,6 +23,9 @@ const CREATE_CLICKS_DAILY_TABLE = `
         PRIMARY KEY (code, date)
     )`;
 
+// Bancos de versões anteriores não têm esta coluna; ela é adicionada ao abrir (migração idempotente).
+const EXPIRES_AT_COLUMN = 'expires_at';
+
 /**
  * Repositório de URLs e de cliques gravado em SQLite. Use ':memory:' como caminho para um banco temporário.
  * As duas interfaces ficam na mesma classe porque dividem a conexão e a chave estrangeira entre as tabelas.
@@ -39,6 +42,7 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         this.#db.exec('PRAGMA synchronous = NORMAL');
         this.#db.exec('PRAGMA foreign_keys = ON');
         this.#db.exec(CREATE_URLS_TABLE);
+        this.#addExpiresAtColumn();
         this.#db.exec(CREATE_CLICKS_DAILY_TABLE);
         this.uniqueIgnoringCase = this.#createCodeNocaseIndex();
     }
@@ -54,18 +58,26 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         }
     }
 
-    async add(code: string, url: string): Promise<boolean> {
+    /** Bancos novos e antigos ganham a coluna aqui, para a definição dela ficar num lugar só. */
+    #addExpiresAtColumn() {
+        const columns = this.#db.prepare('PRAGMA table_info(urls)').all();
+        if (!columns.some(column => column.name === EXPIRES_AT_COLUMN)) {
+            this.#db.exec(`ALTER TABLE urls ADD COLUMN ${EXPIRES_AT_COLUMN} TEXT NULL`);
+        }
+    }
+
+    async add(code: string, url: string, expiresAt: string | null = null): Promise<boolean> {
         // DO NOTHING em vez de checar antes evita condição de corrida entre a checagem e a gravação.
         // Sem alvo, vale para a chave primária e para o índice que ignora maiúsculas.
         const result = this.#db
-            .prepare('INSERT INTO urls (code, url) VALUES (?, ?) ON CONFLICT DO NOTHING')
-            .run(code, url);
+            .prepare(`INSERT INTO urls (code, url, ${EXPIRES_AT_COLUMN}) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`)
+            .run(code, url, expiresAt);
         return result.changes === 1;
     }
 
-    async find(code: string): Promise<string | undefined> {
-        const row = this.#db.prepare('SELECT url FROM urls WHERE code = ?').get(code);
-        return row?.url as string | undefined;
+    async find(code: string): Promise<StoredUrl | undefined> {
+        const row = this.#db.prepare(`SELECT url, ${EXPIRES_AT_COLUMN} AS expiresAt FROM urls WHERE code = ?`).get(code);
+        return row && { url: String(row.url), expiresAt: row.expiresAt === null ? null : String(row.expiresAt) };
     }
 
     async addClick(code: string, date: string): Promise<void> {

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from '../src/backend/alias-validator.ts';
+import { EXPIRATION_OPTIONS } from '../src/backend/expiration.ts';
 import { HOME_PAGE_HTML } from '../src/frontend/home-page.ts';
+import { chaveDaValidade } from '../src/frontend/static/logic.js';
 import { STATIC_DIR } from '../src/frontend/static-files.ts';
 import {
     definirIdioma, escolherIdioma, IDIOMA_DO_HTML, IDIOMA_PADRAO, IDIOMAS, texto, TRADUCOES,
@@ -94,6 +96,14 @@ test('os textos usados no HTML não têm caracteres especiais de HTML', () => {
     ];
     for (const valor of textosDoHtml) {
         assert.doesNotMatch(valor, CARACTERE_ESPECIAL_DE_HTML);
+    }
+});
+
+test('o seletor de validade tem "Sem prazo" e as opções do backend, todas com tradução', () => {
+    const valores = [...HOME_PAGE_HTML.matchAll(/<option value="([^"]*)" data-i18n="/g)].map(([, valor]) => valor);
+    assert.deepEqual(valores, ['', ...Object.keys(EXPIRATION_OPTIONS)]);
+    for (const valor of Object.keys(EXPIRATION_OPTIONS)) {
+        assert.ok(Object.hasOwn(TRADUCOES[IDIOMA_DO_HTML], chaveDaValidade(valor)), valor);
     }
 });
 

@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
-import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink } from './logic.js';
+import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
@@ -25,6 +25,8 @@ const elemento = (id, tipo) => exigir(document.getElementById(id), tipo);
 const form = elemento('form', HTMLFormElement);
 const input = elemento(CAMPO.URL, HTMLInputElement);
 const apelido = elemento(CAMPO.APELIDO, HTMLInputElement);
+const validade = elemento(CAMPO.VALIDADE, HTMLSelectElement);
+const expiracao = elemento('expiracao', HTMLElement);
 const button = exigir(form.querySelector('button'), HTMLButtonElement);
 const erro = elemento('erro', HTMLElement);
 const rotuloLink = elemento('rotulo-link', HTMLElement);
@@ -53,11 +55,12 @@ function mostrarErro(mensagem, campo) {
     rotuloLink.hidden = true;
     link.removeAttribute('href');
     link.textContent = '';
+    expiracao.hidden = true;
     acoes.hidden = true;
     redes.hidden = true;
     qrCode.hidden = true;
     if (campo) {
-        const invalido = elemento(campo, HTMLInputElement);
+        const invalido = elemento(campo, HTMLElement);
         invalido.setAttribute('aria-invalid', 'true');
         invalido.focus();
     }
@@ -71,7 +74,14 @@ function mostrarLink(linkCurto) {
     rotuloLink.hidden = false;
     acoes.hidden = false;
     redes.hidden = true;
+    mostrarExpiracao(linkCurto);
     mostrarQrCode(linkCurto);
+}
+
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarExpiracao({ expiresAt }) {
+    expiracao.textContent = textoDaExpiracao(expiresAt, document.documentElement.lang);
+    expiracao.hidden = !expiresAt;
 }
 
 /** @param {import('./share.js').LinkDeCompartilhamento} opcao */
@@ -158,10 +168,11 @@ form.addEventListener('submit', async event => {
     aviso.textContent = '';
     input.removeAttribute('aria-invalid');
     apelido.removeAttribute('aria-invalid');
+    validade.removeAttribute('aria-invalid');
     button.disabled = true;
 
     try {
-        mostrarLink(await encurtar(caminhoApi, input.value.trim(), apelido.value.trim()));
+        mostrarLink(await encurtar(caminhoApi, input.value.trim(), apelido.value.trim(), validade.value));
         // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
         apelido.value = '';
     } catch (error) {
@@ -214,7 +225,11 @@ function traduzirHtml() {
 
 /** Textos criados pelo JS que continuam na tela. */
 function traduzirConteudoGerado() {
-    if (linkMostrado) qrCode.alt = qrCodeDoLink(rotaQrCode, linkMostrado).alt;
+    if (linkMostrado) {
+        qrCode.alt = qrCodeDoLink(rotaQrCode, linkMostrado).alt;
+        mostrarExpiracao(linkMostrado);
+    }
+
     if (!redes.hidden) criarRedes();
 }
 
