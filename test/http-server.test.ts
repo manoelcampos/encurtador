@@ -240,10 +240,13 @@ test('prazo de validade: redireciona antes, responde 410 depois (sem contar cliq
     const expiringServer = createApiServer(new UrlShortenerService(sqlite, BASE_URL, { clicks: sqlite, now: () => now }), BASE_URL);
     await new Promise<void>(resolve => expiringServer.listen(0, resolve));
     const expiringUrl = `http://localhost:${(expiringServer.address() as AddressInfo).port}`;
-    const created = await fetch(expiringUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/prazo', expiresIn: '1d' }) });
+    const create = (body: object) => fetch(expiringUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify(body) });
+    const created = await create({ url: 'https://example.com/prazo', expiresIn: '1d' });
+    const aliasCreated = await create({ url: 'https://example.com/prazo-apelido', alias: 'prazo-promo', expiresIn: '1d' });
 
     try {
         assert.equal(created.status, 201);
+        assert.equal(aliasCreated.status, 201);
         const { code, expiresAt } = await created.json();
         assert.equal(expiresAt, '2026-11-26T12:00:00.000Z');
         assert.equal((await fetch(`${expiringUrl}/${code}`, { redirect: 'manual' })).status, 302);
@@ -253,6 +256,10 @@ test('prazo de validade: redireciona antes, responde 410 depois (sem contar cliq
         assert.equal(expired.status, 410);
         assert.equal((await expired.json()).code, UrlErrorCode.LINK_EXPIRED);
         assert.equal((await fetch(`${expiringUrl}/${code}`, { method: 'HEAD', redirect: 'manual' })).status, 410);
+
+        const expiredAlias = await fetch(`${expiringUrl}/PRAZO-Promo`, { redirect: 'manual' });
+        assert.equal(expiredAlias.status, 410);
+        assert.equal((await expiredAlias.json()).code, UrlErrorCode.LINK_EXPIRED);
         assert.equal((await fetch(expiringUrl + QRCODE_PATH.replace(CODE_PARAM, code))).status, 410);
 
         const stats = await fetch(expiringUrl + STATS_PATH.replace(CODE_PARAM, code));

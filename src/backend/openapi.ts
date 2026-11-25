@@ -133,7 +133,7 @@ export function createOpenApiSpec(baseUrl: string) {
                             example: 'promo-natal',
                         },
                         expiresIn: {
-                            type: 'string',
+                            type: ['string', 'null'],
                             description: 'Prazo de validade opcional, contado a partir da criação (h = horas, d = dias). '
                                 + 'Sem ele, o link não expira. Depois do prazo, o link responde 410.',
                             enum: Object.keys(EXPIRATION_OPTIONS),
