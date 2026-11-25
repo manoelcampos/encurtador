@@ -1,5 +1,8 @@
-const QUALITY_PARAM = /;\s*q\s*=\s*([\d.]+)/i;
+// RFC 9110: q vai de 0 a 1, com até 3 casas decimais.
+const QUALITY_PARAM = /;\s*q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)\s*$/i;
+const ANY_QUALITY_PARAM = /;\s*q\s*=/i;
 const DEFAULT_QUALITY = 1;
+const REJECTED_QUALITY = 0;
 const ANY_LANGUAGE = '*';
 
 /**
@@ -17,6 +20,13 @@ export function languagesFromHeader(header: string | undefined): string[] {
 
 function parseLanguage(entry: string) {
     const [tag = ''] = entry.split(';');
-    const quality = Number(entry.match(QUALITY_PARAM)?.[1] ?? DEFAULT_QUALITY);
-    return { tag: tag.trim(), quality: Number.isNaN(quality) ? 0 : quality };
+    return { tag: tag.trim(), quality: qualityOf(entry) };
+}
+
+/** `q` inválido (texto, negativo, maior que 1) vale 0, para não virar a preferência máxima. */
+function qualityOf(entry: string): number {
+    const valid = entry.match(QUALITY_PARAM)?.[1];
+    if (valid !== undefined) return Number(valid);
+
+    return ANY_QUALITY_PARAM.test(entry) ? REJECTED_QUALITY : DEFAULT_QUALITY;
 }

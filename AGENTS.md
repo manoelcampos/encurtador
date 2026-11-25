@@ -115,7 +115,7 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `ALIAS_TAKEN` | Apelido em uso (ignorando maiúsculas) ou reservado. Status `409`. |
 | `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
 | `INVALID_EXPIRATION` | `expiresIn` fora da lista aceita (veja "Prazo de validade"). |
-| `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code` e do QR Code de um link expirado. |
+| `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code`, de `/:code+` e do QR Code de um link expirado. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.

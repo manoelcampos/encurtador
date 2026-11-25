@@ -377,7 +377,9 @@ const preview = (code: string, init: RequestInit = {}, base = apiUrl) => fetch(`
 test('o sufixo de pré-visualização mostra o destino sem redirecionar nem contar clique', async () => {
     const { code } = await (await post(JSON.stringify({ url: 'https://example.com/destino?a=1&b=2' }))).json();
 
-    for (const res of [await preview(code), await fetch(`${apiUrl}/${code}${ENCODED_PREVIEW_SUFFIX}`, { redirect: 'manual' })]) {
+    const encoded = (suffix: string) => fetch(`${apiUrl}/${code}${suffix}`, { redirect: 'manual' });
+    const responses = [await preview(code), await encoded(ENCODED_PREVIEW_SUFFIX), await encoded(ENCODED_PREVIEW_SUFFIX.toLowerCase())];
+    for (const res of responses) {
         assert.equal(res.status, 200);
         assert.equal(res.headers.get('location'), null);
         assert.match(res.headers.get('content-type') ?? '', /text\/html/);

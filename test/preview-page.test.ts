@@ -38,6 +38,12 @@ test('lê o Accept-Language em ordem de preferência, sem * nem q=0', () => {
     assert.deepEqual(languagesFromHeader(''), []);
 });
 
+test('ignora itens do Accept-Language com q inválido', () => {
+    assert.deepEqual(languagesFromHeader('es;q=abc, pt'), ['pt']);
+    assert.deepEqual(languagesFromHeader('es;q=2, fr;q=-1, de;q=0.1234, en;q=0.5'), ['en']);
+    assert.deepEqual(languagesFromHeader('en;q=0.5, es;q=1.000'), ['es', 'en']);
+});
+
 test('escolhe o idioma da página pelo Accept-Language', () => {
     assert.equal(previewLanguage(languagesFromHeader('pt-PT,pt;q=0.9')), 'pt-BR');
     assert.equal(previewLanguage(languagesFromHeader('de, es;q=0.5')), 'es');
