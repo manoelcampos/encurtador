@@ -78,3 +78,9 @@ test('serve a interface web na raiz, chamando a API de encurtar', async () => {
     assert.match(html, /<label for="url">/);
     assert.match(html, new RegExp(`fetch\\('${SHORTEN_PATH}'`));
 });
+
+test('responde HEAD na raiz', async () => {
+    const res = await fetch(`${apiUrl}/`, { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+});

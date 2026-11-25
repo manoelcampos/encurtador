@@ -43,7 +43,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | `POST` | `/api/urls` | Corpo `{"url": "https://..."}`. Devolve `201` com `{"code", "shortUrl"}`. |
-| `GET` | `/` | Interface web para encurtar URLs. |
+| `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |

@@ -37,7 +37,7 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return sendJson(res, 200, createOpenApiSpec(baseUrl));
     }
 
-    if (req.method === 'GET' && path === HOME_PATH) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && path === HOME_PATH) {
         return send(res, 200, HTML_HEADERS, HOME_PAGE_HTML);
     }
 

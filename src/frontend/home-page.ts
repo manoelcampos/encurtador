@@ -34,7 +34,9 @@ export const HOME_PAGE_HTML = `<!doctype html>
             </div>
             <p id="erro" role="alert"></p>
         </form>
-        <p id="resultado" aria-live="polite" hidden>Link curto: <a id="link"></a></p>
+        <div aria-live="polite">
+            <p id="resultado" hidden>Link curto: <a id="link"></a></p>
+        </div>
     </main>
     <script>
         const form = document.getElementById('form');
@@ -43,17 +45,19 @@ export const HOME_PAGE_HTML = `<!doctype html>
         const erro = document.getElementById('erro');
         const resultado = document.getElementById('resultado');
         const link = document.getElementById('link');
+        const STATUS_URL_INVALIDA = 400;
+        const MENSAGEM_PADRAO = 'Não foi possível encurtar a URL.';
 
-        function mostrarErro(mensagem) {
+        function mostrarErro(mensagem, urlInvalida) {
             erro.textContent = mensagem;
-            input.setAttribute('aria-invalid', 'true');
             resultado.hidden = true;
-            input.focus();
+            if (urlInvalida) {
+                input.setAttribute('aria-invalid', 'true');
+                input.focus();
+            }
         }
 
         function mostrarLink(shortUrl) {
-            erro.textContent = '';
-            input.removeAttribute('aria-invalid');
             link.href = shortUrl;
             link.textContent = shortUrl;
             resultado.hidden = false;
@@ -65,9 +69,13 @@ export const HOME_PAGE_HTML = `<!doctype html>
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url }),
             });
-            const dados = await res.json();
+
+            // Um proxy pode devolver HTML (ex.: 502); nesse caso usa a mensagem padrão.
+            const dados = await res.json().catch(() => ({}));
             if (!res.ok) {
-                throw new Error(dados.error ?? 'Não foi possível encurtar a URL.');
+                const falha = new Error(dados.error ?? MENSAGEM_PADRAO);
+                falha.urlInvalida = res.status === STATUS_URL_INVALIDA;
+                throw falha;
             }
 
             return dados.shortUrl;
@@ -75,11 +83,16 @@ export const HOME_PAGE_HTML = `<!doctype html>
 
         form.addEventListener('submit', async event => {
             event.preventDefault();
+            // Limpa antes, para que o mesmo erro seja anunciado de novo pelo leitor de tela.
+            erro.textContent = '';
+            input.removeAttribute('aria-invalid');
             button.disabled = true;
+
             try {
                 mostrarLink(await encurtar(input.value.trim()));
             } catch (error) {
-                mostrarErro(error instanceof TypeError ? 'Falha de conexão com o servidor.' : error.message);
+                const conexao = error instanceof TypeError;
+                mostrarErro(conexao ? 'Falha de conexão com o servidor.' : error.message, error.urlInvalida === true);
             } finally {
                 button.disabled = false;
             }
