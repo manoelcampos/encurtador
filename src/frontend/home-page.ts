@@ -40,7 +40,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
             <p id="resultado" hidden>Link curto: <a id="link"></a></p>
         </div>
         <div id="acoes" class="row" hidden>
-            <button type="button" id="copiar">Copiar</button>
+            <button type="button" id="copiar">Copiar link</button>
         </div>
         <p id="aviso" role="status"></p>
     </main>
@@ -80,16 +80,38 @@ export const HOME_PAGE_HTML = `<!doctype html>
             window.getSelection().selectAllChildren(link);
         }
 
-        // Sem HTTPS, navigator.clipboard não existe: o TypeError cai no catch.
-        async function copiarLink() {
+        const ATRASO_AVISO_MS = 100;
+
+        // Outra URL pode ter sido encurtada enquanto a cópia rodava.
+        function linkMudou(copiado) {
+            return link.textContent !== copiado;
+        }
+
+        // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
+        function avisarCopia(copiado, mensagem) {
             aviso.textContent = '';
+            setTimeout(() => {
+                if (!linkMudou(copiado)) aviso.textContent = mensagem;
+            }, ATRASO_AVISO_MS);
+        }
+
+        // Sem HTTPS, navigator.clipboard não existe: o TypeError cai no catch.
+        async function copiar(texto) {
             try {
-                await navigator.clipboard.writeText(link.textContent);
-                aviso.textContent = AVISO_COPIADO;
+                await navigator.clipboard.writeText(texto);
+                return true;
             } catch {
-                aviso.textContent = AVISO_FALHA_COPIA;
-                selecionarLink();
+                return false;
             }
+        }
+
+        async function copiarLink() {
+            const copiado = link.textContent;
+            const sucesso = await copiar(copiado);
+            if (linkMudou(copiado)) return;
+
+            avisarCopia(copiado, sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA);
+            if (!sucesso) selecionarLink();
         }
 
         document.getElementById('copiar').addEventListener('click', copiarLink);

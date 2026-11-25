@@ -100,7 +100,7 @@ test('serve a interface web na raiz, chamando a API de encurtar', async () => {
 
 test('a interface web tem botão para copiar o link curto', async () => {
     const html = await (await fetch(`${apiUrl}/`)).text();
-    assert.match(html, /<button type="button" id="copiar">Copiar<\/button>/);
+    assert.match(html, /<button type="button" id="copiar">Copiar link<\/button>/);
     assert.match(html, /navigator\.clipboard\.writeText\(/);
     assert.match(html, /<p id="aviso" role="status"><\/p>/);
 });
