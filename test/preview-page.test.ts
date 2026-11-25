@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { languagesFromHeader } from '../src/backend/accept-language.ts';
 import { PREVIEW_SUFFIX } from '../src/backend/api-paths.ts';
-import { escapeHtml, previewLanguage, previewPageHtml } from '../src/frontend/preview-page.ts';
+import { escapeHtml, limitedPreviewPageHtml, previewLanguage, previewPageHtml } from '../src/frontend/preview-page.ts';
 import { IDIOMA_PADRAO, IDIOMAS, TRADUCOES } from '../src/frontend/static/messages.js';
 
 const HOME = '/';
@@ -21,6 +21,13 @@ test('o domínio de destino aparece em destaque e o link Continuar não passa o 
     const html = previewPageHtml('https://sub.example.org/caminho', 'en', HOME);
     assert.match(html, /<p id="dominio">sub\.example\.org<\/p>/);
     assert.match(html, /<a class="botao" href="https:\/\/sub\.example\.org\/caminho" rel="noopener noreferrer">Continue<\/a>/);
+});
+
+test('página de link com limite não mostra o destino e Continuar leva ao link curto', () => {
+    const html = limitedPreviewPageHtml('/AbC234xYz', 'es', HOME);
+    assert.doesNotMatch(html, /id="dominio"|id="url"/);
+    assert.ok(html.includes(TRADUCOES.es.TEXTO_PREVIA_LIMITADA));
+    assert.match(html, /<a class="botao" href="\/AbC234xYz" rel="noopener noreferrer">Continuar<\/a>/);
 });
 
 test('URL que não é http/https não vira link', () => {

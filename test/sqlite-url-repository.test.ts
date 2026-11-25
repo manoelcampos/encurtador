@@ -29,7 +29,7 @@ test('abre banco da versão anterior, sem a tabela de cliques, e passa a contar'
 
     const repository = new SqliteUrlRepository(path);
     try {
-        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null, remainingClicks: null });
         assert.equal(await repository.countClicks('antigo'), 0);
 
         await repository.addClick('antigo', '2026-11-25');
@@ -47,7 +47,7 @@ test('recusa código igual a outro ignorando maiúsculas', async () => {
     assert.equal(repository.uniqueIgnoringCase, true);
     assert.equal(await repository.add('AbC', 'https://um.com/'), true);
     assert.equal(await repository.add('abc', 'https://dois.com/'), false);
-    assert.deepEqual(await repository.find('AbC'), { url: 'https://um.com/', expiresAt: null });
+    assert.deepEqual(await repository.find('AbC'), { url: 'https://um.com/', expiresAt: null, remainingClicks: null });
 });
 
 test('banco antigo com códigos que só diferem em maiúsculas abre sem quebrar e avisa no log', async (t) => {
@@ -63,8 +63,8 @@ test('banco antigo com códigos que só diferem em maiúsculas abre sem quebrar 
     try {
         assert.equal(repository.uniqueIgnoringCase, false);
         assert.equal(warn.mock.callCount(), 1);
-        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
-        assert.deepEqual(await repository.find('ANTIGO'), { url: 'https://outro.example/', expiresAt: null });
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null, remainingClicks: null });
+        assert.deepEqual(await repository.find('ANTIGO'), { url: 'https://outro.example/', expiresAt: null, remainingClicks: null });
     } finally {
         repository.close();
         await rm(dir, { recursive: true, force: true });
@@ -79,12 +79,12 @@ test('abre banco antigo sem a coluna expires_at, adiciona a coluna e grava o pra
 
     try {
         const repository = new SqliteUrlRepository(path);
-        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null });
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null, remainingClicks: null });
         assert.equal(await repository.add('novo', 'https://novo.example/', expiresAt), true);
         repository.close();
 
         const reopened = new SqliteUrlRepository(path);
-        assert.deepEqual(await reopened.find('novo'), { url: 'https://novo.example/', expiresAt });
+        assert.deepEqual(await reopened.find('novo'), { url: 'https://novo.example/', expiresAt, remainingClicks: null });
         reopened.close();
     } finally {
         await rm(dir, { recursive: true, force: true });
@@ -114,6 +114,51 @@ test('abre banco antigo sem a coluna manage_token_hash: links antigos ficam sem 
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+// Esquema do origin/main antes do limite de acessos: já tem prazo e token, mas não tem remaining_clicks.
+const SCHEMA_WITHOUT_REMAINING_CLICKS = `
+    CREATE TABLE urls (
+        code              TEXT PRIMARY KEY,
+        url               TEXT NOT NULL,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at        TEXT NULL,
+        manage_token_hash TEXT NULL
+    )`;
+
+test('abre banco sem a coluna remaining_clicks: links antigos ficam sem limite e os novos gravam o limite', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'encurtador-'));
+    const path = join(dir, 'sem-limite.db');
+    const old = new DatabaseSync(path);
+    old.exec(SCHEMA_WITHOUT_REMAINING_CLICKS);
+    old.prepare('INSERT INTO urls (code, url, manage_token_hash) VALUES (?, ?, ?)').run('antigo', 'https://example.com/', 'hash');
+    old.close();
+
+    try {
+        const repository = new SqliteUrlRepository(path);
+        assert.deepEqual(await repository.find('antigo'), { url: 'https://example.com/', expiresAt: null, remainingClicks: null });
+        assert.equal(await repository.consumeClick('antigo'), false);
+        assert.equal(await repository.add('novo', 'https://novo.example/', null, 'hash', 2), true);
+        repository.close();
+
+        const reopened = new SqliteUrlRepository(path);
+        assert.equal((await reopened.find('novo'))?.remainingClicks, 2);
+        assert.equal(await reopened.findManageTokenHash('antigo'), 'hash');
+        reopened.close();
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('consumeClick gasta um acesso por vez e para em zero', async () => {
+    const repository = new SqliteUrlRepository(':memory:');
+    await repository.add('dois', 'https://um.com/', null, null, 2);
+
+    assert.equal(await repository.consumeClick('dois'), true);
+    assert.equal(await repository.consumeClick('dois'), true);
+    assert.equal(await repository.consumeClick('dois'), false);
+    assert.equal((await repository.find('dois'))?.remainingClicks, 0);
+    assert.equal(await repository.consumeClick('naoexiste'), false);
 });
 
 test('delete apaga o link e os cliques dele, e o código fica livre', async () => {

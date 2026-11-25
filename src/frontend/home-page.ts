@@ -38,10 +38,11 @@ export const HOME_PAGE_HTML = `<!doctype html>
         button, .botao { font-size: 1rem; padding: .6rem 1.2rem; border: 0; border-radius: 6px; background: #1a56db; color: #ffffff; cursor: pointer; text-decoration: none; }
         button:disabled { opacity: .7; cursor: wait; }
         input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #0b3d91; outline-offset: 2px; }
-        #campo-apelido, #campo-validade, #campo-rastreamento { margin-top: .75rem; }
+        #campo-apelido, #campo-validade, #campo-limite, #campo-rastreamento { margin-top: .75rem; }
         #campo-rastreamento label { display: inline; font-weight: normal; }
-        #expiracao, #destino { margin: .25rem 0 0; color: #57606a; word-break: break-all; }
-        #dica-apelido, #dica-rastreamento, #dica-previa { margin: .25rem 0 0; font-size: .9rem; color: #57606a; }
+        #limite-acessos { flex: 0 1 8rem; }
+        #expiracao, #usos, #destino { margin: .25rem 0 0; color: #57606a; word-break: break-all; }
+        #dica-apelido, #dica-limite, #dica-rastreamento, #dica-previa { margin: .25rem 0 0; font-size: .9rem; color: #57606a; }
         #erro { color: #b42318; margin: .5rem 0 0; min-height: 1.5em; }
         #resultado { margin-top: 1rem; word-break: break-all; }
         a { color: #0b3d91; }
@@ -87,6 +88,15 @@ export const HOME_PAGE_HTML = `<!doctype html>
                 <label for="validade" data-i18n="ROTULO_VALIDADE">${t.ROTULO_VALIDADE}</label>
                 <select id="validade" name="expiresIn" aria-describedby="erro">${opcoesDeValidade}</select>
             </div>
+            <div id="campo-limite">
+                <label for="limite-acessos" data-i18n="ROTULO_LIMITE_ACESSOS">${t.ROTULO_LIMITE_ACESSOS}</label>
+                <!-- type="text": com type="number", um texto inválido viraria valor vazio e criaria um link sem limite. -->
+                <div class="row">
+                    <input id="limite-acessos" name="maxClicks" type="text" inputmode="numeric" autocomplete="off"
+                        aria-describedby="dica-limite erro">
+                </div>
+                <p id="dica-limite" data-i18n="DICA_LIMITE_ACESSOS">${t.DICA_LIMITE_ACESSOS}</p>
+            </div>
             <div id="campo-rastreamento">
                 <input id="remover-rastreamento" name="removeTracking" type="checkbox" checked aria-describedby="dica-rastreamento erro">
                 <label for="remover-rastreamento" data-i18n="ROTULO_REMOVER_RASTREAMENTO">${t.ROTULO_REMOVER_RASTREAMENTO}</label>
@@ -96,8 +106,9 @@ export const HOME_PAGE_HTML = `<!doctype html>
         </form>
         <!-- Só o link fica na região aria-live, para a troca de idioma do rótulo não ser anunciada. -->
         <p id="resultado"><span id="rotulo-link" data-i18n="ROTULO_LINK_CURTO" hidden>${t.ROTULO_LINK_CURTO}</span>
-            <span aria-live="polite"><a id="link" aria-describedby="expiracao destino"></a></span></p>
+            <span aria-live="polite"><a id="link" aria-describedby="expiracao usos destino"></a></span></p>
         <p id="expiracao" hidden></p>
+        <p id="usos" hidden></p>
         <p id="destino" hidden><span data-i18n="ROTULO_DESTINO_GRAVADO">${t.ROTULO_DESTINO_GRAVADO}</span> <span id="url-destino"></span></p>
         <p id="dica-previa" data-i18n="DICA_PREVIA" hidden>${t.DICA_PREVIA}</p>
         <img id="qrcode" alt="" hidden>

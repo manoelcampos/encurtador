@@ -34,7 +34,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste). Colunas novas em tabelas existentes (como `urls.expires_at` e `urls.manage_token_hash`) são adicionadas ao abrir, com `ALTER TABLE ... ADD COLUMN` só se o `PRAGMA table_info` mostrar que faltam (migração idempotente; há teste com o esquema anterior).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste). Colunas novas em tabelas existentes (como `urls.expires_at`, `urls.manage_token_hash` e `urls.remaining_clicks`) são adicionadas ao abrir, com `ALTER TABLE ... ADD COLUMN` só se o `PRAGMA table_info` mostrar que faltam (migração idempotente; há teste com o esquema anterior).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
@@ -44,7 +44,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `my-links.js`: lista "Meus links" (links criados neste navegador, com o token de gestão) guardada no `localStorage`, com o armazenamento injetado; sem DOM e testada. Veja "Token de gestão".
     - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
-    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409`, `429`, o `503` de `ALIAS_UNAVAILABLE` e os `401`/`403` do token de gestão, o frontend mostra a mensagem traduzida.
+    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400` (inclusive `INVALID_MAX_CLICKS`), `409`, `429`, o `503` de `ALIAS_UNAVAILABLE` e os `401`/`403` do token de gestão, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
   - `preview-page.ts`: HTML da página de pré-visualização (`/{code}+`), montado pelo servidor e sem JS. Veja "Pré-visualização".
 - `test/`: testes automatizados.
@@ -55,14 +55,14 @@ API pública e aberta, sem contas, com CORS liberado para qualquer origem (inclu
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional", "removeTracking": false}`. Devolve `201` com `{"code", "shortUrl", "url", "expiresAt", "manageToken"}` (`url` é o destino gravado). Veja "Apelidos", "Prazo de validade", "Parâmetros de rastreamento" e "Token de gestão". |
+| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional", "removeTracking": false, "maxClicks": 1}` (`maxClicks` opcional). Devolve `201` com `{"code", "shortUrl", "url", "expiresAt", "maxClicks", "manageToken"}` (`url` é o destino gravado). Veja "Apelidos", "Prazo de validade", "Limite de acessos", "Parâmetros de rastreamento" e "Token de gestão". |
 | `DELETE` | `/api/urls/{code}` | Apaga o link e os cliques com o header `Authorization: Bearer <manageToken>`. `204`, `401`, `403` ou `404`. Veja "Token de gestão". |
-| `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), `404`, ou `410` se o link expirou. |
+| `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), `404`, ou `410` se o link expirou ou esgotou os acessos. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
-| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou. Só `GET` conta como clique. |
-| `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar e sem contar clique, `404`, ou `410` se o link expirou. Veja "Pré-visualização". |
+| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou ou esgotou os acessos. Só `GET` conta como clique e gasta acesso; `HEAD` de link com limite dá `200` sem `Location`. |
+| `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar, sem contar clique e sem gastar acesso (sem o destino em link com limite), `404`, ou `410` se o link expirou ou esgotou os acessos. Veja "Pré-visualização". |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
@@ -71,7 +71,7 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 ### Contagem de cliques
 
 - Cada `GET /:code` que redireciona soma 1 ao contador do código no dia (UTC) na tabela `clicks_daily(code, date, clicks)`, com UPSERT. Não guarda hora, IP nem user agent (LGPD), e `/stats` lê no máximo uma linha por dia, por mais cliques que haja.
-- `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas.
+- `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas. Muitos robôs, porém, fazem `GET` e contam como clique (veja "Limite de acessos").
 - Se a gravação do clique falhar, o erro vai para o log e o redirecionamento acontece mesmo assim.
 - `totalClicks` conta todo o período. `clicksByDay` mostra só os últimos `STATS_DAYS` (30) dias em UTC, contando hoje, em ordem de data, e omite os dias sem cliques.
 - A data vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas. O `ClickRepository` é injetado pela opção `clicks`; sem ela, nenhum clique é registrado (`NO_CLICK_REPOSITORY`).
@@ -94,6 +94,24 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado automaticamente. Só o dono, com o token de gestão, pode apagá-lo e liberar o apelido.
 - O `<select>` "Validade" da interface é montado em `home-page.ts` com as chaves de `EXPIRATION_OPTIONS`; cada opção tem a tradução `VALIDADE_<VALOR>` (há teste). A data de expiração aparece abaixo do link curto, formatada no idioma atual com `Intl.DateTimeFormat`.
 
+### Limite de acessos
+
+Link de uso único (ou de N usos), que deixa de funcionar depois de N redirecionamentos.
+
+- O campo opcional `maxClicks` do `POST /api/urls` aceita um inteiro de 1 a `MAX_CLICKS_LIMIT` (1000, em `max-clicks.ts`). Outro valor (`0`, negativo, decimal, texto como `"5"`, boolean) dá `400` com `INVALID_MAX_CLICKS`; `null` vale como ausente (sem limite). A resposta traz `maxClicks` (ou `null`).
+- O banco guarda só os acessos restantes (coluna `urls.remaining_clicks INTEGER NULL`; `NULL` é sem limite, inclusive para links antigos).
+- Só o `GET /:code` que redireciona gasta acesso, com um único `UPDATE urls SET remaining_clicks = remaining_clicks - 1 WHERE code = ? AND remaining_clicks > 0` (`consumeClick` no repositório), que só passa se `changes === 1`. Checar e gastar no mesmo comando é o que impede dois acessos simultâneos de passarem do limite (há teste com vários `GET` simultâneos). Link sem limite não executa esse `UPDATE`.
+- Sem acesso restante, `GET`/`HEAD /:code` respondem `410 Gone` com `{"error", "code": "LINK_EXHAUSTED"}` e nenhum clique é contado. O clique em `clicks_daily` continua sendo contado só quando o redirecionamento acontece.
+- `HEAD`, a pré-visualização (`/:code+`), o QR Code e `/stats` não gastam acesso. Por isso, num link com limite, `HEAD` e a pré-visualização também não revelam o destino, senão contornariam o limite:
+  - **Decisão:** `HEAD /:code` de link com limite responde `200` sem corpo e sem `Location` (um `302` exigiria o `Location`).
+  - A pré-visualização mostra só um texto (`TEXTO_PREVIA_LIMITADA`) dizendo que o link tem acessos limitados e que o destino não é mostrado; o "Continuar" aponta para o link curto (`/{code}`), cujo `GET` gasta o acesso (`limitedPreviewPageHtml` em `preview-page.ts`).
+  - Links sem limite continuam com `HEAD` `302` e a pré-visualização com o destino.
+- Robôs de prévia de link (WhatsApp, Slack, Telegram, redes sociais etc.) e antivírus de e-mail costumam fazer `GET` e, portanto, gastam acesso. **Decisão:** o consumo não é pulado por User-Agent, pois ele é falsificável e viraria um jeito de burlar o limite. A dica do campo avisa que abrir o link ou compartilhá-lo em apps de mensagem pode gastar acessos.
+- **Decisão:** a pré-visualização e o QR Code de um link esgotado dão `410` (`LINK_EXHAUSTED`), como os de um link expirado, pois levariam a um link que não abre mais. `/stats` continua `200`, para o dono ver os números. O dono pode apagar o link esgotado com o token de gestão (`204`).
+- Combina com o prazo de validade: vale o que acabar primeiro. Se as duas coisas aconteceram, a resposta é `LINK_EXPIRED`.
+- Como no prazo, o apelido de um link esgotado continua ocupado; só o dono, com o token de gestão, pode apagá-lo.
+- Interface: o campo "Limite de acessos" (`type="text"` com `inputmode="numeric"`, pois com `type="number"` um texto inválido viraria valor vazio e criaria um link sem limite; vazio é sem limite). `limiteDoPedido` em `logic.js` manda o inteiro como número e qualquer outro texto como está, para a API recusar e o campo ser marcado. O resultado mostra "Este link funciona N vez(es)" (`textoDosUsos`, com `Intl.PluralRules` e as chaves `USOS_ONE`/`USOS_OTHER`). A dica e a mensagem de erro citam o `MAX_CLICKS_LIMIT` (há teste). "Meus links" não guarda o limite.
+
 ### Parâmetros de rastreamento
 
 - O campo opcional `removeTracking` do `POST /api/urls` (boolean, padrão `false` para não mudar o comportamento de quem já usa a API) remove da URL os parâmetros de rastreamento antes de gravar. Outro tipo (inclusive `"true"`) dá `400` com `INVALID_REMOVE_TRACKING`; `null` vale como ausente.
@@ -105,7 +123,7 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 ### Pré-visualização
 
 - O código seguido de `PREVIEW_SUFFIX` (`+`, em `api-paths.ts`), como `/AbC234xYz+`, mostra uma página com o domínio de destino em destaque, a URL completa, um link "Continuar" (`rel="noopener noreferrer"`) e um link para a página inicial. A forma codificada (`/AbC234xYz%2B`) também funciona. O `+` não cabe no `CODE_PATTERN`, então não conflita com códigos nem apelidos.
-- Usa a mesma busca do redirecionamento (`resolve`): apelido sem diferenciar maiúsculas, `404` para código inexistente e `410` (`LINK_EXPIRED`) para link expirado, em JSON como nas outras rotas. Não conta clique. `HEAD` funciona.
+- Usa a mesma busca do redirecionamento (`findActive`): apelido sem diferenciar maiúsculas, `404` para código inexistente e `410` (`LINK_EXPIRED` ou `LINK_EXHAUSTED`) para link expirado ou esgotado, em JSON como nas outras rotas. Não conta clique nem gasta acesso; por isso, em link com limite, não mostra o destino (veja "Limite de acessos"). `HEAD` funciona.
 - Segurança: todo valor interpolado no HTML passa por `escapeHtml`; só URLs `http`/`https` viram link (outras ficam com `href="#"`), sem confiar só na validação da criação. A resposta envia `Content-Security-Policy` sem scripts (`default-src 'none'`, só CSS embutido, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `X-Content-Type-Options: nosniff`.
 - Idioma: escolhido pelo header `Accept-Language` (`languagesFromHeader` em `accept-language.ts`, ordenado por `q`), com a mesma `escolherIdioma` do frontend e os textos dos arquivos `i18n-*.js`.
 - **Decisão:** a página não busca o título da página de destino. Fazer o servidor acessar URLs de terceiros abriria risco de SSRF (DNS que aponta para a rede interna, redirecionamentos, respostas enormes) e custo; mostrar o destino já atende ao objetivo. O encurtador continua sem nunca acessar as URLs.
@@ -141,7 +159,9 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
 | `INVALID_EXPIRATION` | `expiresIn` fora da lista aceita (veja "Prazo de validade"). |
 | `INVALID_REMOVE_TRACKING` | `removeTracking` que não é boolean (veja "Parâmetros de rastreamento"). |
+| `INVALID_MAX_CLICKS` | `maxClicks` que não é inteiro de 1 a `MAX_CLICKS_LIMIT` (veja "Limite de acessos"). |
 | `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code`, de `/:code+` e do QR Code de um link expirado. |
+| `LINK_EXHAUSTED` | Não vem do `POST`: é a resposta `410` de `/:code`, de `/:code+` e do QR Code de um link que esgotou os acessos. |
 | `MANAGE_TOKEN_REQUIRED` | Não vem do `POST`: `DELETE` sem o header `Authorization: Bearer`. Status `401`. |
 | `INVALID_MANAGE_TOKEN` | Não vem do `POST`: `DELETE` com token errado, ou de link antigo sem token. Status `403`. |
 

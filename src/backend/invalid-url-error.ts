@@ -17,8 +17,12 @@ export const UrlErrorCode = {
     INVALID_EXPIRATION: 'INVALID_EXPIRATION',
     /** `removeTracking` com valor que não é boolean. */
     INVALID_REMOVE_TRACKING: 'INVALID_REMOVE_TRACKING',
+    /** `maxClicks` que não é um inteiro de 1 a MAX_CLICKS_LIMIT. */
+    INVALID_MAX_CLICKS: 'INVALID_MAX_CLICKS',
     /** O link passou do prazo de validade; `/:code` e o QR Code respondem 410. */
     LINK_EXPIRED: 'LINK_EXPIRED',
+    /** O link já teve todos os acessos de `maxClicks`; `/:code`, `/:code+` e o QR Code respondem 410. */
+    LINK_EXHAUSTED: 'LINK_EXHAUSTED',
     /** `DELETE` sem o token de gestão no header Authorization; a API responde 401. */
     MANAGE_TOKEN_REQUIRED: 'MANAGE_TOKEN_REQUIRED',
     /** Token de gestão errado, ou link antigo, criado sem token; a API responde 403. */

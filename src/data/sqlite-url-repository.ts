@@ -27,7 +27,13 @@ const CREATE_CLICKS_DAILY_TABLE = `
 const EXPIRES_AT_COLUMN = 'expires_at';
 // Só o hash do token de gestão: quem lê o banco não consegue apagar links. Links antigos ficam com NULL.
 const MANAGE_TOKEN_HASH_COLUMN = 'manage_token_hash';
-const ADDED_COLUMNS = { [EXPIRES_AT_COLUMN]: 'TEXT NULL', [MANAGE_TOKEN_HASH_COLUMN]: 'TEXT NULL' };
+// Acessos que ainda restam ao link com limite (maxClicks); NULL é sem limite (inclusive links antigos).
+const REMAINING_CLICKS_COLUMN = 'remaining_clicks';
+const ADDED_COLUMNS = {
+    [EXPIRES_AT_COLUMN]: 'TEXT NULL',
+    [MANAGE_TOKEN_HASH_COLUMN]: 'TEXT NULL',
+    [REMAINING_CLICKS_COLUMN]: 'INTEGER NULL',
+};
 
 /**
  * Repositório de URLs e de cliques gravado em SQLite. Use ':memory:' como caminho para um banco temporário.
@@ -71,13 +77,25 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         }
     }
 
-    async add(code: string, url: string, expiresAt: string | null = null, manageTokenHash: string | null = null): Promise<boolean> {
+    async add(
+        code: string, url: string, expiresAt: string | null = null, manageTokenHash: string | null = null, maxClicks: number | null = null,
+    ): Promise<boolean> {
         // DO NOTHING em vez de checar antes evita condição de corrida entre a checagem e a gravação.
         // Sem alvo, vale para a chave primária e para o índice que ignora maiúsculas.
         const result = this.#db
-            .prepare(`INSERT INTO urls (code, url, ${EXPIRES_AT_COLUMN}, ${MANAGE_TOKEN_HASH_COLUMN}) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`)
-            .run(code, url, expiresAt, manageTokenHash);
+            .prepare(`
+                INSERT INTO urls (code, url, ${EXPIRES_AT_COLUMN}, ${MANAGE_TOKEN_HASH_COLUMN}, ${REMAINING_CLICKS_COLUMN})
+                VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+            .run(code, url, expiresAt, manageTokenHash, maxClicks);
         return result.changes === 1;
+    }
+
+    /** Um único UPDATE condicional: checar e gastar juntos impede que acessos simultâneos passem do limite. */
+    async consumeClick(code: string): Promise<boolean> {
+        const { changes } = this.#db
+            .prepare(`UPDATE urls SET ${REMAINING_CLICKS_COLUMN} = ${REMAINING_CLICKS_COLUMN} - 1 WHERE code = ? AND ${REMAINING_CLICKS_COLUMN} > 0`)
+            .run(code);
+        return changes === 1;
     }
 
     async findManageTokenHash(code: string): Promise<string | null | undefined> {
@@ -100,8 +118,14 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
     }
 
     async find(code: string): Promise<StoredUrl | undefined> {
-        const row = this.#db.prepare(`SELECT url, ${EXPIRES_AT_COLUMN} AS expiresAt FROM urls WHERE code = ?`).get(code);
-        return row && { url: String(row.url), expiresAt: row.expiresAt === null ? null : String(row.expiresAt) };
+        const row = this.#db
+            .prepare(`SELECT url, ${EXPIRES_AT_COLUMN} AS expiresAt, ${REMAINING_CLICKS_COLUMN} AS remainingClicks FROM urls WHERE code = ?`)
+            .get(code);
+        return row && {
+            url: String(row.url),
+            expiresAt: row.expiresAt === null ? null : String(row.expiresAt),
+            remainingClicks: row.remainingClicks === null ? null : Number(row.remainingClicks),
+        };
     }
 
     async addClick(code: string, date: string): Promise<void> {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { InvalidUrlError, UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { hashManageToken } from '../src/backend/manage-token.ts';
+import { MAX_CLICKS_LIMIT } from '../src/backend/max-clicks.ts';
 import { STATS_DAYS, UrlShortenerService, type UrlShortenerOptions } from '../src/backend/url-shortener-service.ts';
 import type { UrlThreatChecker } from '../src/backend/url-threat-checker.ts';
 import { NO_CLICK_REPOSITORY } from '../src/data/click-repository.ts';
@@ -312,4 +313,84 @@ test('a limpeza vem antes do próprio domínio e da consulta de ameaças, que ve
     await rejectsWith(service.shorten(`${MALICIOUS_URL}?utm_source=x`, undefined, undefined, true), UrlErrorCode.MALICIOUS_URL);
     await rejectsWith(service.shorten(`${BASE_URL}?fbclid=x`, undefined, undefined, true), UrlErrorCode.OWN_DOMAIN);
     assert.deepEqual(checked, [MALICIOUS_URL]);
+});
+
+/** Encurta com limite de acessos (e prazo, se informado). */
+const shortenLimited = (service: UrlShortenerService, maxClicks: unknown, expiresIn?: string, alias?: string) =>
+    service.shorten('https://example.com/', alias, expiresIn, undefined, maxClicks);
+
+test('link com maxClicks 1 redireciona só na primeira visita; depois lança LINK_EXHAUSTED sem contar clique', async () => {
+    const service = createService();
+    const { code, maxClicks } = await shortenLimited(service, 1);
+    assert.equal(maxClicks, 1);
+
+    assert.equal(await service.visit(code), 'https://example.com/');
+    await rejectsWith(service.visit(code), UrlErrorCode.LINK_EXHAUSTED);
+    await rejectsWith(service.resolve(code), UrlErrorCode.LINK_EXHAUSTED);
+    await rejectsWith(service.findActive(code), UrlErrorCode.LINK_EXHAUSTED);
+    assert.equal((await service.stats(code))?.totalClicks, 1);
+});
+
+test('resolve e findActive (HEAD, pré-visualização e QR Code) não gastam acesso', async () => {
+    const service = createService();
+    const { code } = await shortenLimited(service, 1);
+    for (let i = 0; i < 3; i++) {
+        assert.equal(await service.resolve(code), 'https://example.com/');
+        assert.ok(await service.findActive(code));
+    }
+
+    assert.equal(await service.visit(code), 'https://example.com/');
+});
+
+test('apelido digitado com outra caixa gasta o acesso do código gravado', async () => {
+    const service = createService();
+    await shortenLimited(service, 1, undefined, 'unico');
+    assert.equal(await service.visit('UNICO'), 'https://example.com/');
+    await rejectsWith(service.visit('unico'), UrlErrorCode.LINK_EXHAUSTED);
+});
+
+test('visitas simultâneas não passam do limite', async () => {
+    const service = createService();
+    const limit = 3;
+    const { code } = await shortenLimited(service, limit);
+
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => service.visit(code)));
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, limit);
+    assert.equal((await service.stats(code))?.totalClicks, limit);
+});
+
+test('limite e prazo juntos: vale o que acabar primeiro', async () => {
+    const clock = fakeClock('2026-11-25T12:00:00Z');
+    const service = createService({ now: clock.now });
+    const expiresFirst = await shortenLimited(service, 5, '1h');
+    const exhaustsFirst = await shortenLimited(service, 1, '1h');
+
+    assert.equal(await service.visit(exhaustsFirst.code), 'https://example.com/');
+    await rejectsWith(service.visit(exhaustsFirst.code), UrlErrorCode.LINK_EXHAUSTED);
+
+    assert.equal(await service.visit(expiresFirst.code), 'https://example.com/');
+    clock.set('2026-11-25T13:00:00Z');
+    await rejectsWith(service.visit(expiresFirst.code), UrlErrorCode.LINK_EXPIRED);
+});
+
+test('sem maxClicks (ou com null) o link não tem limite', async () => {
+    const service = createService();
+    for (const maxClicks of [undefined, null]) {
+        const { code, maxClicks: saved } = await shortenLimited(service, maxClicks);
+        assert.equal(saved, null);
+        for (let i = 0; i < 5; i++) {
+            assert.equal(await service.visit(code), 'https://example.com/');
+        }
+    }
+});
+
+test('maxClicks fora de 1 a MAX_CLICKS_LIMIT lança INVALID_MAX_CLICKS antes de consultar o provedor externo', async () => {
+    const checked: string[] = [];
+    const service = createService({ threatChecker: fakeChecker(checked) });
+    for (const maxClicks of [0, -1, 1.5, '5', 'abc', MAX_CLICKS_LIMIT + 1, Number.NaN, Number.POSITIVE_INFINITY, true, {}]) {
+        await rejectsWith(shortenLimited(service, maxClicks), UrlErrorCode.INVALID_MAX_CLICKS);
+    }
+
+    assert.deepEqual(checked, []);
+    assert.equal((await shortenLimited(service, MAX_CLICKS_LIMIT)).maxClicks, MAX_CLICKS_LIMIT);
 });

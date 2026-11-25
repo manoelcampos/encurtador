@@ -7,7 +7,7 @@ import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
-import { previewLanguage, previewPageHtml } from '../frontend/preview-page.ts';
+import { limitedPreviewPageHtml, previewLanguage, previewPageHtml } from '../frontend/preview-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { createQrCodeSvg } from './qr-code.ts';
@@ -15,7 +15,7 @@ import { clientIp } from './client-ip.ts';
 import type { RateLimits } from './rate-limit-config.ts';
 import type { RateLimiter } from './rate-limiter.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
-import type { UrlShortenerService } from './url-shortener-service.ts';
+import type { StoredLink, UrlShortenerService } from './url-shortener-service.ts';
 
 const MAX_BODY_BYTES = 10 * 1024;
 const HOME_PATH = '/';
@@ -52,6 +52,7 @@ const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
     [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
     [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
     [UrlErrorCode.LINK_EXPIRED]: GONE,
+    [UrlErrorCode.LINK_EXHAUSTED]: GONE,
     [UrlErrorCode.MANAGE_TOKEN_REQUIRED]: UNAUTHORIZED,
     [UrlErrorCode.INVALID_MANAGE_TOKEN]: FORBIDDEN,
 };
@@ -156,8 +157,10 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const { code, url, expiresAt, manageToken } = await service.shorten(body?.url, body?.alias, body?.expiresIn, body?.removeTracking);
-    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), url, expiresAt, manageToken });
+    const { code, url, expiresAt, maxClicks, manageToken } = await service.shorten(
+        body?.url, body?.alias, body?.expiresIn, body?.removeTracking, body?.maxClicks,
+    );
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), url, expiresAt, maxClicks, manageToken });
 }
 
 /** Apaga o link com o token de gestão do header `Authorization: Bearer <token>`. */
@@ -172,7 +175,7 @@ async function deleteLink(service: UrlShortenerService, code: string, req: Incom
 /** Token do header `Authorization: Bearer <token>`, ou undefined se o header faltar ou tiver outro formato. */
 const bearerToken = (header: string | undefined) => header?.match(BEARER_TOKEN)?.[1];
 
-/** Link expirado responde 410 (LINK_EXPIRED): o QR Code levaria a um link que não abre mais. */
+/** Link expirado ou esgotado responde 410 (LINK_EXPIRED ou LINK_EXHAUSTED): o QR Code levaria a um link que não abre mais. Não gasta acesso. */
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
     // O QR Code leva o código gravado (ex.: o apelido em minúsculas), não o texto pedido.
     const { code: storedCode } = requireCode(await service.findActive(code));
@@ -192,11 +195,22 @@ function requireCode<T>(found: T | undefined): T {
     return found;
 }
 
-/** Só GET conta como clique: HEAD é usado por robôs e prévias de link, que não são visitas de pessoas. */
+/**
+ * Só GET conta como clique e gasta acesso do limite: HEAD é usado por robôs e prévias de link, que não são visitas de pessoas
+ * (e gastariam o acesso de um link de uso único).
+ */
 async function redirect(service: UrlShortenerService, code: string, countClick: boolean, res: ServerResponse) {
-    const url = countClick ? await service.visit(code) : await service.resolve(code);
-    send(res, 302, { Location: requireCode(url) });
+    if (countClick) {
+        return send(res, 302, { Location: requireCode(await service.visit(code)) });
+    }
+
+    // HEAD de link com limite responde 200 sem Location: senão revelaria o destino sem gastar acesso.
+    const link = requireCode(await service.findActive(code));
+    return hidesDestination(link) ? send(res, 200) : send(res, 302, { Location: link.url });
 }
+
+/** Link com limite de acessos não revela o destino fora do GET que gasta o acesso. */
+const hidesDestination = (link: StoredLink) => link.remainingClicks !== null;
 
 /** Código pedido em `/{code}+` (ou `/{code}%2B`), ou undefined se o caminho não termina com o sufixo. */
 function previewCodeOf(path: string): string | undefined {
@@ -204,11 +218,14 @@ function previewCodeOf(path: string): string | undefined {
     return suffix ? path.slice(1, -suffix.length) : undefined;
 }
 
-/** Mostra o destino sem redirecionar. Não conta clique; link expirado dá 410, como no redirecionamento. */
+/** Mostra o destino sem redirecionar (link com limite: sem o destino). Não conta clique nem gasta acesso; link expirado ou esgotado dá 410. */
 async function sendPreview(service: UrlShortenerService, code: string, req: IncomingMessage, res: ServerResponse) {
-    const url = requireCode(await service.resolve(code));
+    const link = requireCode(await service.findActive(code));
     const language = previewLanguage(languagesFromHeader(req.headers['accept-language']));
-    send(res, 200, PREVIEW_HEADERS, previewPageHtml(url, language, HOME_PATH));
+    const html = hidesDestination(link)
+        ? limitedPreviewPageHtml(HOME_PATH + encodeURIComponent(link.code), language, HOME_PATH)
+        : previewPageHtml(link.url, language, HOME_PATH);
+    send(res, 200, PREVIEW_HEADERS, html);
 }
 
 async function sendStatic(res: ServerResponse, name: string) {
@@ -238,7 +255,9 @@ async function readBody(req: IncomingMessage): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseJson(text: string): { url?: unknown; alias?: unknown; expiresIn?: unknown; removeTracking?: unknown } | undefined {
+function parseJson(
+    text: string,
+): { url?: unknown; alias?: unknown; expiresIn?: unknown; removeTracking?: unknown; maxClicks?: unknown } | undefined {
     try {
         const value = JSON.parse(text);
         return typeof value === 'object' && value !== null ? value : undefined;

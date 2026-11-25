@@ -3,6 +3,7 @@ import { readdir } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from '../src/backend/alias-validator.ts';
 import { EXPIRATION_OPTIONS } from '../src/backend/expiration.ts';
+import { MAX_CLICKS_LIMIT } from '../src/backend/max-clicks.ts';
 import { HOME_PAGE_HTML } from '../src/frontend/home-page.ts';
 import { chaveDaValidade } from '../src/frontend/static/logic.js';
 import { STATIC_DIR } from '../src/frontend/static-files.ts';
@@ -114,4 +115,19 @@ test('a dica e a mensagem de apelido citam os mesmos limites do backend', () => 
             assert.ok(valor.includes(String(ALIAS_MIN_LENGTH)) && valor.includes(String(ALIAS_MAX_LENGTH)), `${idioma} ${chave}`);
         }
     }
+});
+
+test('a dica e a mensagem do limite de acessos citam o máximo aceito pelo backend', () => {
+    for (const idioma of IDIOMAS) {
+        for (const chave of ['DICA_LIMITE_ACESSOS', 'MENSAGEM_LIMITE_ACESSOS_INVALIDO'] as const) {
+            assert.ok(TRADUCOES[idioma][chave].includes(String(MAX_CLICKS_LIMIT)), `${idioma} ${chave}`);
+        }
+    }
+});
+
+test('a página tem o campo de limite de acessos, com rótulo e dica, e o lugar do texto de usos', () => {
+    assert.match(HOME_PAGE_HTML, /<label for="limite-acessos" data-i18n="ROTULO_LIMITE_ACESSOS">/);
+    assert.match(HOME_PAGE_HTML, /<input id="limite-acessos" name="maxClicks" type="text" inputmode="numeric"/);
+    assert.match(HOME_PAGE_HTML, /aria-describedby="dica-limite erro"/);
+    assert.match(HOME_PAGE_HTML, /<p id="usos" hidden><\/p>/);
 });
