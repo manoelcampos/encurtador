@@ -157,11 +157,17 @@ export function corpoDoPedido(url, apelido, validade = '', removerRastreamento =
 /**
  * Se a URL gravada difere da digitada (ex.: parâmetros de rastreamento removidos). Compara com a forma normalizada
  * da digitada, para diferenças só de formato (como a `/` final que o backend acrescenta) não contarem.
+ * Digitada inválida conta como alterada.
  * @param {string} digitada
  * @param {string} gravada
  */
 export function destinoAlterado(digitada, gravada) {
-    return URL.parse(digitada)?.href !== gravada;
+    // Sem URL.parse: ele só existe em navegadores de 2024 em diante (Safari 18).
+    try {
+        return new URL(digitada).href !== gravada;
+    } catch {
+        return true;
+    }
 }
 
 /**

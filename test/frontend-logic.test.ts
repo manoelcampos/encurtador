@@ -116,6 +116,7 @@ test('o destino só conta como alterado quando a URL gravada difere da digitada 
     assert.equal(destinoAlterado('https://a.com/?utm_source=x&id=1', 'https://a.com/?id=1'), true);
     assert.equal(destinoAlterado('https://a.com', 'https://a.com/'), false);
     assert.equal(destinoAlterado('https://a.com/?id=1', 'https://a.com/?id=1'), false);
+    assert.equal(destinoAlterado('não é URL', 'https://a.com/'), true);
 });
 
 test('validade inválida marca o campo de validade e usa a mensagem traduzida', () => {

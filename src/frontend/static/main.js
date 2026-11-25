@@ -194,19 +194,31 @@ form.addEventListener('submit', async event => {
     removerRastreamento.removeAttribute('aria-invalid');
     button.disabled = true;
 
+    const url = input.value.trim();
+    const linkCurto = await pedirLink(url);
+    button.disabled = false;
+    if (!linkCurto) return;
+
+    // Guarda antes de mostrar: uma falha ao mostrar não pode perder o token de gestão.
+    lembrarLink(linkCurto);
+    // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
+    apelido.value = '';
+    mostrarLink(linkCurto, url);
+});
+
+/**
+ * Só o pedido à API fica neste try, para um erro ao mostrar o link não virar "falha de conexão".
+ * @param {string} url
+ * @returns {Promise<import('./logic.js').LinkCurto | undefined>} o link criado, ou undefined se a API ou a rede falhou
+ */
+async function pedirLink(url) {
     try {
-        const url = input.value.trim();
-        const linkCurto = await encurtar(caminhoApi, url, apelido.value.trim(), validade.value, removerRastreamento.checked);
-        mostrarLink(linkCurto, url);
-        lembrarLink(linkCurto);
-        // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
-        apelido.value = '';
+        return await encurtar(caminhoApi, url, apelido.value.trim(), validade.value, removerRastreamento.checked);
     } catch (error) {
         mostrarErro(mensagemDeFalha(error), error instanceof ApiError ? campoInvalido(error.status, error.codigo) : undefined);
-    } finally {
-        button.disabled = false;
+        return undefined;
     }
-});
+}
 
 const secaoMeusLinks = elemento('meus-links', HTMLElement);
 const tituloMeusLinks = elemento('titulo-meus-links', HTMLElement);
