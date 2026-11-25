@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
+import {
+    avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink, urlInvalida,
+} from '../src/frontend/static/logic.js';
 import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
 
 const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
@@ -20,6 +22,33 @@ test('usa a mensagem traduzida para URL inválida (400), e não a da API em port
         assert.equal(mensagemDaApi({ error: 'URL inválida.' }, 400), TRADUCOES.es.MENSAGEM_URL_INVALIDA);
     } finally {
         definirIdioma(IDIOMA_DO_HTML);
+    }
+});
+
+test('usa a mensagem traduzida de limite excedido (429), sem marcar o campo como inválido', () => {
+    assert.equal(mensagemDaApi({ error: 'Limite de requisições excedido.' }, 429), texto('MENSAGEM_LIMITE_EXCEDIDO'));
+    assert.equal(urlInvalida(429), false);
+    definirIdioma('en');
+    try {
+        assert.equal(mensagemDaApi({}, 429), TRADUCOES.en.MENSAGEM_LIMITE_EXCEDIDO);
+    } finally {
+        definirIdioma(IDIOMA_DO_HTML);
+    }
+});
+
+test('mostra os minutos de espera do Retry-After na mensagem de limite excedido', () => {
+    assert.equal(mensagemDaApi({}, 429, '3600'), texto('MENSAGEM_LIMITE_EXCEDIDO_MINUTOS').replace('{minutos}', '60'));
+    assert.match(mensagemDaApi({}, 429, '61'), /\b2\b/);
+});
+
+test('converte o Retry-After em minutos arredondados para cima, ou undefined se inválido', () => {
+    assert.equal(minutosDeEspera('1'), 1);
+    assert.equal(minutosDeEspera('60'), 1);
+    assert.equal(minutosDeEspera('61'), 2);
+    assert.equal(minutosDeEspera(' 120 '), 2);
+    for (const invalido of [null, '', 'abc', '-5', '1.5', 'Wed, 21 Oct 2026 07:28:00 GMT']) {
+        assert.equal(minutosDeEspera(invalido), undefined, String(invalido));
+        assert.equal(mensagemDaApi({}, 429, invalido), texto('MENSAGEM_LIMITE_EXCEDIDO'));
     }
 });
 

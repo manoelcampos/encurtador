@@ -8,6 +8,13 @@ const errorResponse = (description: string) => ({
     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
 });
 
+const TOO_MANY_REQUESTS_RESPONSE = {
+    ...errorResponse('Limite de requisições por IP excedido'),
+    headers: {
+        'Retry-After': { description: 'Segundos até poder tentar de novo', schema: { type: 'integer' } },
+    },
+};
+
 /** Especificação OpenAPI da API. `baseUrl` aparece como servidor no Swagger UI. */
 export function createOpenApiSpec(baseUrl: string) {
     return {
@@ -15,7 +22,7 @@ export function createOpenApiSpec(baseUrl: string) {
         info: {
             title: 'Encurtador de URLs',
             version: '0.1.0',
-            description: 'API pública e aberta, sem autenticação.',
+            description: 'API pública e aberta, sem autenticação, com limite de requisições por IP.',
         },
         servers: [{ url: baseUrl }],
         paths: {
@@ -33,6 +40,7 @@ export function createOpenApiSpec(baseUrl: string) {
                         },
                         400: errorResponse('JSON ou URL inválidos'),
                         413: errorResponse('Corpo da requisição grande demais'),
+                        429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
             },
@@ -47,6 +55,7 @@ export function createOpenApiSpec(baseUrl: string) {
                             content: { 'image/svg+xml': { schema: { type: 'string' } } },
                         },
                         404: errorResponse('Código não encontrado'),
+                        429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
             },
@@ -61,6 +70,7 @@ export function createOpenApiSpec(baseUrl: string) {
                             headers: { Location: { schema: { type: 'string', format: 'uri' } } },
                         },
                         404: errorResponse('Código não encontrado'),
+                        429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
             },
