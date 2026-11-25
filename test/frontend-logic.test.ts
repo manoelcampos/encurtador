@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
-import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
+import { texto } from '../src/frontend/static/messages.js';
+
+const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
+const MENSAGEM_CONEXAO = texto('MENSAGEM_CONEXAO');
+const AVISO_COPIADO = texto('AVISO_COPIADO');
+const AVISO_FALHA_COPIA = texto('AVISO_FALHA_COPIA');
+const ALT_QRCODE = texto('ALT_QRCODE');
 
 test('usa a mensagem de erro da API quando ela vem no corpo', () => {
     assert.equal(mensagemDaApi({ error: 'URL inválida.' }), 'URL inválida.');

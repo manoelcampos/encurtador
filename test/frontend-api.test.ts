@@ -3,7 +3,10 @@ import { afterEach, test } from 'node:test';
 import { SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { ApiError, encurtar } from '../src/frontend/static/api.js';
 import { mensagemDeFalha } from '../src/frontend/static/logic.js';
-import { MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
+import { texto } from '../src/frontend/static/messages.js';
+
+const MENSAGEM_PADRAO = texto('MENSAGEM_PADRAO');
+const MENSAGEM_CONEXAO = texto('MENSAGEM_CONEXAO');
 
 const URL_LONGA = 'https://example.com/pagina';
 const fetchOriginal = globalThis.fetch;

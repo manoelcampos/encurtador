@@ -1,13 +1,21 @@
 import { QRCODE_PATH, SHORTEN_PATH } from '../backend/api-paths.ts';
 import { STATIC_PATH } from './static-files.ts';
+import { IDIOMA_DO_HTML, IDIOMAS, TRADUCOES } from './static/messages.js';
+
+// O HTML vem em IDIOMA_DO_HTML; o main.js troca os textos marcados com data-i18n* pelo idioma escolhido.
+const t = TRADUCOES[IDIOMA_DO_HTML];
+
+const opcoesDeIdioma = IDIOMAS
+    .map(idioma => `<option value="${idioma}" lang="${idioma}">${TRADUCOES[idioma].NOME_IDIOMA}</option>`)
+    .join('');
 
 // A página só fala com o backend pela API HTTP (POST em SHORTEN_PATH e GET em QRCODE_PATH). O JS fica em static/.
 export const HOME_PAGE_HTML = `<!doctype html>
-<html lang="pt-BR">
+<html lang="${IDIOMA_DO_HTML}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Encurtador de URLs</title>
+    <title>${t.TITULO_PAGINA}</title>
     <style>
         :root { font-family: system-ui, sans-serif; color: #1f2328; background: #ffffff; }
         body { margin: 0 auto; max-width: 40rem; padding: 2rem 1rem; line-height: 1.5; }
@@ -26,30 +34,38 @@ export const HOME_PAGE_HTML = `<!doctype html>
         #redes { list-style: none; margin: .5rem 0 0; padding: 0; }
         .row[hidden] { display: none; }
         #aviso { margin: .5rem 0 0; min-height: 1.5em; }
+        #seletor-idioma { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; }
+        #seletor-idioma label { margin: 0; }
+        select { font-size: 1rem; padding: .3rem; }
+        select:focus-visible { outline: 3px solid #0b3d91; outline-offset: 2px; }
     </style>
 </head>
 <body>
     <main>
-        <h1>Encurtador de URLs</h1>
+        <div id="seletor-idioma">
+            <label for="idioma" data-i18n="ROTULO_IDIOMA">${t.ROTULO_IDIOMA}</label>
+            <select id="idioma">${opcoesDeIdioma}</select>
+        </div>
+        <h1 data-i18n="TITULO_PAGINA">${t.TITULO_PAGINA}</h1>
         <form id="form" data-api="${SHORTEN_PATH}" data-qrcode="${QRCODE_PATH}" novalidate>
-            <label for="url">URL para encurtar</label>
+            <label for="url" data-i18n="ROTULO_URL">${t.ROTULO_URL}</label>
             <div class="row">
                 <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
-                    placeholder="https://exemplo.com/pagina" aria-describedby="erro">
-                <button type="submit">Encurtar</button>
+                    placeholder="${t.EXEMPLO_URL}" data-i18n-placeholder="EXEMPLO_URL" aria-describedby="erro">
+                <button type="submit" data-i18n="BOTAO_ENCURTAR">${t.BOTAO_ENCURTAR}</button>
             </div>
             <p id="erro" role="alert"></p>
         </form>
         <div aria-live="polite">
-            <p id="resultado" hidden>Link curto: <a id="link"></a></p>
+            <p id="resultado" hidden><span data-i18n="ROTULO_LINK_CURTO">${t.ROTULO_LINK_CURTO}</span> <a id="link"></a></p>
         </div>
         <img id="qrcode" alt="" hidden>
         <div id="acoes" class="row" hidden>
-            <button type="button" id="copiar">Copiar link</button>
-            <a id="baixar" class="botao" download>Baixar QR Code</a>
-            <button type="button" id="compartilhar">Compartilhar</button>
+            <button type="button" id="copiar" data-i18n="BOTAO_COPIAR">${t.BOTAO_COPIAR}</button>
+            <a id="baixar" class="botao" download data-i18n="BOTAO_BAIXAR_QRCODE">${t.BOTAO_BAIXAR_QRCODE}</a>
+            <button type="button" id="compartilhar" data-i18n="BOTAO_COMPARTILHAR">${t.BOTAO_COMPARTILHAR}</button>
         </div>
-        <ul id="redes" class="row" aria-label="Opções de compartilhamento" hidden></ul>
+        <ul id="redes" class="row" aria-label="${t.ROTULO_OPCOES_COMPARTILHAMENTO}" data-i18n-aria-label="ROTULO_OPCOES_COMPARTILHAMENTO" hidden></ul>
         <p id="aviso" role="status"></p>
     </main>
     <script type="module" src="${STATIC_PATH}main.js"></script>

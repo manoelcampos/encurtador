@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COMPARTILHAR_EMAIL, COMPARTILHAR_WHATSAPP, TITULO_COMPARTILHAMENTO } from '../src/frontend/static/messages.js';
+import { texto } from '../src/frontend/static/messages.js';
 import { compartilhar, linksDeCompartilhamento, REDES, RESULTADO } from '../src/frontend/static/share.js';
 
 const LINK = 'https://encurta.do/a?b=1&c=2';
 const LINK_CODIFICADO = encodeURIComponent(LINK);
+const COMPARTILHAR_EMAIL = texto('COMPARTILHAR_EMAIL');
+const COMPARTILHAR_WHATSAPP = texto('COMPARTILHAR_WHATSAPP');
+const TITULO_COMPARTILHAMENTO = texto('TITULO_COMPARTILHAMENTO');
 
 test('monta um link de compartilhamento para cada rede, com a URL codificada', () => {
     const links = linksDeCompartilhamento(LINK);
