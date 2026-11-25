@@ -1,7 +1,8 @@
 // Liga as regras da página ao DOM.
-import { ApiError, encurtar } from './api.js';
+import { apagar, ApiError, encurtar } from './api.js';
 import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
+import { avisoAoEsquecer, enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from './my-links.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
 /**
@@ -175,7 +176,9 @@ form.addEventListener('submit', async event => {
     button.disabled = true;
 
     try {
-        mostrarLink(await encurtar(caminhoApi, input.value.trim(), apelido.value.trim(), validade.value));
+        const linkCurto = await encurtar(caminhoApi, input.value.trim(), apelido.value.trim(), validade.value);
+        mostrarLink(linkCurto);
+        lembrarLink(linkCurto);
         // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
         apelido.value = '';
     } catch (error) {
@@ -184,6 +187,149 @@ form.addEventListener('submit', async event => {
         button.disabled = false;
     }
 });
+
+const secaoMeusLinks = elemento('meus-links', HTMLElement);
+const tituloMeusLinks = elemento('titulo-meus-links', HTMLElement);
+const listaMeusLinks = elemento('lista-meus-links', HTMLUListElement);
+const meusLinksVazio = elemento('meus-links-vazio', HTMLElement);
+const avisoMeusLinks = elemento('aviso-meus-links', HTMLElement);
+const { link: rotaDoLink = '', stats: rotaEstatisticas = '', previa: sufixoPrevia = '' } = secaoMeusLinks.dataset;
+
+/**
+ * O acesso ao localStorage fica dentro das funções, pois ele pode lançar erro (ex.: bloqueado pelo navegador).
+ * @type {import('./my-links.js').Armazenamento}
+ */
+const armazenamento = {
+    getItem: chave => localStorage.getItem(chave),
+    setItem: (chave, valor) => localStorage.setItem(chave, valor),
+};
+
+/** @type {import('./logic.js').DependenciasAviso} */
+const dependenciasAvisoMeusLinks = {
+    avisar: mensagem => { avisoMeusLinks.textContent = mensagem; },
+    aposAtraso: acao => { setTimeout(acao, ATRASO_AVISO_MS); },
+};
+
+/**
+ * Uma falha aqui só vai para o log: o link já foi criado e mostrado, então o envio não deve virar erro.
+ * @param {import('./logic.js').LinkCurto} linkCurto
+ */
+function lembrarLink(linkCurto) {
+    try {
+        if (!guardarLink(armazenamento, linkCurto)) avisarDeNovo(dependenciasAviso, texto('AVISO_FALHA_GUARDAR'));
+        renderizarMeusLinks();
+    } catch (error) {
+        console.error('Não foi possível atualizar "Meus links":', error);
+    }
+}
+
+function renderizarMeusLinks() {
+    const links = lerMeusLinks(armazenamento);
+    listaMeusLinks.replaceChildren(...links.map(criarItemDeMeusLinks));
+    meusLinksVazio.hidden = links.length > 0;
+}
+
+/**
+ * @param {import('./my-links.js').LinkGuardado} linkGuardado
+ * @param {number} indice
+ */
+function criarItemDeMeusLinks(linkGuardado, indice) {
+    // As ações de cada item são descritas pelo link curto, para o leitor de tela saber de qual link é cada "Apagar".
+    const idDoLink = `meu-link-${indice}`;
+    const { estatisticas, previa } = enderecosDoLink(rotaEstatisticas, sufixoPrevia, linkGuardado);
+    const curto = criarAncora(linkGuardado.shortUrl, linkGuardado.shortUrl);
+    curto.id = idDoLink;
+
+    const acoesDoLink = document.createElement('div');
+    acoesDoLink.className = 'row';
+    acoesDoLink.append(
+        criarAncora(estatisticas, texto('LINK_ESTATISTICAS'), idDoLink),
+        criarAncora(previa, texto('LINK_VER_DESTINO'), idDoLink),
+        criarBotaoApagar(linkGuardado, idDoLink),
+    );
+
+    const item = document.createElement('li');
+    item.append(curto, criarExpiracaoDoItem(linkGuardado.expiresAt), acoesDoLink);
+    return item;
+}
+
+/**
+ * @param {string} href
+ * @param {string} rotulo
+ * @param {string} [descritoPor] id do elemento que descreve o link
+ */
+function criarAncora(href, rotulo, descritoPor) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.textContent = rotulo;
+    if (descritoPor) a.setAttribute('aria-describedby', descritoPor);
+    return a;
+}
+
+/** @param {string | null} expiresAt */
+function criarExpiracaoDoItem(expiresAt) {
+    const p = document.createElement('p');
+    p.textContent = textoDaExpiracao(expiresAt, document.documentElement.lang);
+    p.hidden = !expiresAt;
+    return p;
+}
+
+/**
+ * O primeiro clique só pede confirmação (sem window.confirm, que atrapalha leitores de tela); o segundo apaga.
+ * @param {import('./my-links.js').LinkGuardado} linkGuardado
+ * @param {string} descritoPor id do link curto
+ */
+function criarBotaoApagar(linkGuardado, descritoPor) {
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.textContent = texto('BOTAO_APAGAR');
+    botao.setAttribute('aria-describedby', descritoPor);
+    botao.addEventListener('click', () => cliqueEmApagar(botao, linkGuardado));
+    // Sair do botão cancela a confirmação pendente.
+    botao.addEventListener('blur', () => {
+        delete botao.dataset.confirmando;
+        botao.textContent = texto('BOTAO_APAGAR');
+    });
+    return botao;
+}
+
+/**
+ * @param {HTMLButtonElement} botao
+ * @param {import('./my-links.js').LinkGuardado} linkGuardado
+ */
+async function cliqueEmApagar(botao, linkGuardado) {
+    if (!botao.dataset.confirmando) {
+        botao.dataset.confirmando = 'true';
+        botao.textContent = texto('BOTAO_CONFIRMAR_APAGAR');
+        avisarDeNovo(dependenciasAvisoMeusLinks, texto('AVISO_CONFIRMAR_APAGAR'));
+        return;
+    }
+
+    botao.disabled = true;
+    try {
+        await apagar(rotaDoLink, linkGuardado);
+        concluirExclusao(linkGuardado.code, 'AVISO_LINK_APAGADO');
+    } catch (error) {
+        const chaveDoAviso = error instanceof ApiError ? avisoAoEsquecer(error.status, error.codigo) : undefined;
+        if (chaveDoAviso) return concluirExclusao(linkGuardado.code, chaveDoAviso);
+
+        botao.disabled = false;
+        botao.focus();
+        avisarDeNovo(dependenciasAvisoMeusLinks, mensagemDeFalha(error));
+    }
+}
+
+/**
+ * O botão apagado some da página; o foco vai para o título da seção, para não se perder.
+ * @param {string} code
+ * @param {import('./messages.js').ChaveDeTexto} chaveDoAviso
+ */
+function concluirExclusao(code, chaveDoAviso) {
+    esquecerLink(armazenamento, code);
+    renderizarMeusLinks();
+    tituloMeusLinks.focus();
+    avisarDeNovo(dependenciasAvisoMeusLinks, texto(chaveDoAviso));
+}
 
 const CHAVE_IDIOMA_SALVO = 'idioma';
 /** O elemento com data-i18n-<atributo>="CHAVE" recebe o texto da CHAVE nesse atributo. */
@@ -234,6 +380,7 @@ function traduzirConteudoGerado() {
     }
 
     if (!redes.hidden) criarRedes();
+    renderizarMeusLinks();
 }
 
 /** @param {string} idioma um dos idiomas disponíveis */
@@ -246,6 +393,7 @@ function aplicarIdioma(idioma) {
     // Erros e avisos são passageiros: limpa para não ficarem no idioma antigo.
     erro.textContent = '';
     aviso.textContent = '';
+    avisoMeusLinks.textContent = '';
 }
 
 seletorIdioma.addEventListener('change', () => {

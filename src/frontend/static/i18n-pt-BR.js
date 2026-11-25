@@ -48,6 +48,20 @@ const ptBR = {
     ROTULO_URL_COMPLETA: 'URL completa:',
     BOTAO_CONTINUAR: 'Continuar',
     LINK_PAGINA_INICIAL: 'Encurtar outra URL',
+    TITULO_MEUS_LINKS: 'Meus links',
+    AVISO_MEUS_LINKS: 'Os links ficam guardados só neste navegador, com a chave secreta que permite apagá-los. '
+        + 'Se você limpar os dados do navegador, perde o acesso a eles.',
+    MEUS_LINKS_VAZIO: 'Nenhum link criado neste navegador.',
+    LINK_ESTATISTICAS: 'Estatísticas',
+    LINK_VER_DESTINO: 'Ver destino',
+    BOTAO_APAGAR: 'Apagar',
+    BOTAO_CONFIRMAR_APAGAR: 'Confirmar exclusão',
+    AVISO_CONFIRMAR_APAGAR: 'Clique de novo no botão para confirmar a exclusão do link.',
+    AVISO_LINK_APAGADO: 'Link apagado.',
+    AVISO_LINK_REMOVIDO_TOKEN_INVALIDO: 'A chave secreta guardada não confere com este link, então ele não pode ser apagado. Ele foi tirado da lista.',
+    AVISO_FALHA_GUARDAR: 'Não foi possível guardar o link neste navegador. Você não vai conseguir apagá-lo depois.',
+    MENSAGEM_TOKEN_AUSENTE: 'Falta a chave secreta do link.',
+    MENSAGEM_TOKEN_INVALIDO: 'A chave secreta guardada não confere com este link. Não é possível apagá-lo.',
 };
 
 /** @typedef {typeof ptBR} Traducao */

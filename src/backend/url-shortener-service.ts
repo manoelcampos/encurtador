@@ -4,6 +4,7 @@ import { ALIAS_PATTERN, aliasTakenError, aliasUnavailableError, validateAlias } 
 import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
 import { expirationDate, isExpired } from './expiration.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
+import { generateManageToken, hashManageToken, manageTokenMatches } from './manage-token.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
 import { normalizedHostname, validateDestination, validateUrl } from './url-validator.ts';
 
@@ -31,9 +32,21 @@ export interface ShortenedLink {
     expiresAt: string | null;
 }
 
+/** Link recém-criado, com o token de gestão, que só é devolvido aqui (o banco guarda só o hash). */
+export interface CreatedLink extends ShortenedLink {
+    manageToken: string;
+}
+
 /** Link encontrado: o código como está gravado, a URL original e a data de expiração. */
 export interface StoredLink extends ShortenedLink {
     url: string;
+}
+
+/** Dados gravados de um link novo, menos o código. */
+interface NewLink {
+    url: string;
+    expiresAt: string | null;
+    manageTokenHash: string;
 }
 
 export interface ClickStats {
@@ -66,18 +79,20 @@ export class UrlShortenerService {
      * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.
      * `expiresInInput` é uma das EXPIRATION_OPTIONS (ou ausente, sem prazo); outro valor lança INVALID_EXPIRATION.
      */
-    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown): Promise<ShortenedLink> {
+    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown): Promise<CreatedLink> {
         const alias = validateAlias(aliasInput);
         const expiresAt = expirationDate(expiresInInput, this.#now());
         const url = await this.#validate(input);
-        const code = alias === undefined ? await this.#addGenerated(url, expiresAt) : await this.#addAlias(alias, url, expiresAt);
-        return { code, expiresAt };
+        const manageToken = generateManageToken();
+        const link: NewLink = { url, expiresAt, manageTokenHash: hashManageToken(manageToken) };
+        const code = alias === undefined ? await this.#addGenerated(link) : await this.#addAlias(alias, link);
+        return { code, expiresAt, manageToken };
     }
 
-    async #addGenerated(url: string, expiresAt: string | null): Promise<string> {
+    async #addGenerated(link: NewLink): Promise<string> {
         for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
             const code = this.#generateCode();
-            if (await this.#repository.add(code, url, expiresAt)) {
+            if (await this.#add(code, link)) {
                 return code;
             }
         }
@@ -86,16 +101,43 @@ export class UrlShortenerService {
     }
 
     /** O `add` falha se o código já existir, então não há corrida entre checar e gravar. */
-    async #addAlias(alias: string, url: string, expiresAt: string | null): Promise<string> {
+    async #addAlias(alias: string, link: NewLink): Promise<string> {
         if (!this.#repository.uniqueIgnoringCase) {
             throw aliasUnavailableError();
         }
 
-        if (!await this.#repository.add(alias, url, expiresAt)) {
+        if (!await this.#add(alias, link)) {
             throw aliasTakenError();
         }
 
         return alias;
+    }
+
+    #add(code: string, { url, expiresAt, manageTokenHash }: NewLink) {
+        return this.#repository.add(code, url, expiresAt, manageTokenHash);
+    }
+
+    /**
+     * Apaga o link (e os cliques dele) se o token de gestão confere. Funciona mesmo depois do prazo de validade.
+     * O código (ou apelido) fica livre para ser usado de novo. Retorna false se o código não existir.
+     * Sem token, lança MANAGE_TOKEN_REQUIRED; token errado ou link antigo (sem token) lança INVALID_MANAGE_TOKEN.
+     */
+    async delete(requestedCode: string, manageToken: string | undefined): Promise<boolean> {
+        if (!manageToken) {
+            throw new InvalidUrlError('Informe o token de gestão do link.', UrlErrorCode.MANAGE_TOKEN_REQUIRED);
+        }
+
+        const code = (await this.find(requestedCode))?.code;
+        if (!code) {
+            return false;
+        }
+
+        const storedHash = await this.#repository.findManageTokenHash(code);
+        if (!storedHash || !manageTokenMatches(manageToken, storedHash)) {
+            throw new InvalidUrlError('Token de gestão inválido para este link.', UrlErrorCode.INVALID_MANAGE_TOKEN);
+        }
+
+        return this.#repository.delete(code);
     }
 
     /** URL do código para redirecionar, sem contar clique. Lança LINK_EXPIRED se o link expirou. */

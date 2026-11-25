@@ -1,5 +1,5 @@
 /**
- * Códigos estáveis dos motivos de recusa de uma URL ou do apelido, devolvidos pela API no campo `code`.
+ * Códigos estáveis dos motivos de recusa de uma URL, do apelido ou do token de gestão, devolvidos pela API no campo `code`.
  * O frontend escolhe a mensagem traduzida por eles (CHAVES_DOS_CODIGOS_DE_ERRO em logic.js; há teste).
  */
 export const UrlErrorCode = {
@@ -17,6 +17,10 @@ export const UrlErrorCode = {
     INVALID_EXPIRATION: 'INVALID_EXPIRATION',
     /** O link passou do prazo de validade; `/:code` e o QR Code respondem 410. */
     LINK_EXPIRED: 'LINK_EXPIRED',
+    /** `DELETE` sem o token de gestão no header Authorization; a API responde 401. */
+    MANAGE_TOKEN_REQUIRED: 'MANAGE_TOKEN_REQUIRED',
+    /** Token de gestão errado, ou link antigo, criado sem token; a API responde 403. */
+    INVALID_MANAGE_TOKEN: 'INVALID_MANAGE_TOKEN',
 } as const;
 
 export type UrlErrorCode = typeof UrlErrorCode[keyof typeof UrlErrorCode];

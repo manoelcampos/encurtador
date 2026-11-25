@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
@@ -92,7 +92,9 @@ const postAlias = (alias: unknown, url = 'https://example.com/promo') => post(JS
 test('apelido livre cria o link, que redireciona sem diferenciar maiúsculas', async () => {
     const res = await postAlias('Promo-Natal');
     assert.equal(res.status, 201);
-    assert.deepEqual(await res.json(), { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, expiresAt: null });
+    const { manageToken, ...link } = await res.json();
+    assert.deepEqual(link, { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, expiresAt: null });
+    assert.equal(typeof manageToken, 'string');
 
     for (const path of ['/promo-natal', '/PROMO-Natal']) {
         const redirect = await fetch(apiUrl + path, { redirect: 'manual' });
@@ -288,10 +290,59 @@ test('o marcador do código no frontend é o mesmo da rota do backend', () => {
     assert.equal(MARCADOR_CODIGO, CODE_PARAM);
 });
 
-test('responde ao preflight de CORS', async () => {
+test('responde ao preflight de CORS, liberando o DELETE com Authorization', async () => {
     const res = await fetch(apiUrl + SHORTEN_PATH, { method: 'OPTIONS' });
     assert.equal(res.status, 204);
     assert.match(res.headers.get('access-control-allow-methods') ?? '', /POST/);
+
+    const preflight = await fetch(linkUrl('abc'), {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://outro.example', 'Access-Control-Request-Method': 'DELETE', 'Access-Control-Request-Headers': 'authorization' },
+    });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get('access-control-allow-methods') ?? '', /DELETE/);
+    assert.match(preflight.headers.get('access-control-allow-headers') ?? '', /Authorization/i);
+});
+
+const linkUrl = (code: string) => apiUrl + LINK_PATH.replace(CODE_PARAM, code);
+const deleteLink = (code: string, authorization?: string) =>
+    fetch(linkUrl(code), { method: 'DELETE', headers: authorization ? { Authorization: authorization } : {} });
+
+test('a criação devolve o token de gestão, e o DELETE com ele apaga o link e os cliques', async () => {
+    const { code, manageToken } = await (await post(JSON.stringify({ url: 'https://example.com/apagar' }))).json();
+    assert.equal(typeof manageToken, 'string');
+    await fetch(`${apiUrl}/${code}`, { redirect: 'manual' });
+    assert.equal(await totalClicks(code), 1);
+
+    const res = await deleteLink(code, `Bearer ${manageToken}`);
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('access-control-allow-origin'), '*');
+    assert.equal((await fetch(`${apiUrl}/${code}`, { redirect: 'manual' })).status, 404);
+    assert.equal((await fetch(statsUrl(code))).status, 404);
+    assert.equal(await repository.countClicks(code), 0);
+    assert.equal((await deleteLink(code, `Bearer ${manageToken}`)).status, 404);
+});
+
+test('DELETE sem token dá 401, com token errado dá 403 e com código inexistente dá 404', async () => {
+    const { code, manageToken } = await (await post(JSON.stringify({ url: 'https://example.com/protegido' }))).json();
+
+    const semToken = await deleteLink(code);
+    assert.equal(semToken.status, 401);
+    assert.equal(semToken.headers.get('www-authenticate'), 'Bearer');
+    assert.equal((await semToken.json()).code, UrlErrorCode.MANAGE_TOKEN_REQUIRED);
+    assert.equal((await deleteLink(code, manageToken)).status, 401, 'sem o esquema Bearer');
+
+    const errado = await deleteLink(code, `Bearer ${manageToken}x`);
+    assert.equal(errado.status, 403);
+    assert.equal((await errado.json()).code, UrlErrorCode.INVALID_MANAGE_TOKEN);
+
+    assert.equal((await deleteLink('naoexiste', `Bearer ${manageToken}`)).status, 404);
+    assert.equal((await fetch(`${apiUrl}/${code}`, { redirect: 'manual' })).status, 302);
+});
+
+test('DELETE de link antigo, criado sem token, dá 403', async () => {
+    await repository.add('antigo-sem-token', 'https://example.com/antigo');
+    assert.equal((await deleteLink('antigo-sem-token', 'Bearer qualquer')).status, 403);
 });
 
 test('serve a especificação OpenAPI com as rotas da API', async () => {
@@ -299,8 +350,9 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     assert.equal(res.status, 200);
 
     const spec = await res.json();
-    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
+    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, LINK_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
     assert.equal(spec.servers[0].url, BASE_URL);
+    assert.ok(spec.paths[LINK_PATH].delete.responses[401].headers['WWW-Authenticate']);
 });
 
 test('serve o Swagger UI apontando para a especificação', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { SHORTEN_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, LINK_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { rateLimitsFromEnv } from '../src/backend/rate-limit-config.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
@@ -68,6 +68,22 @@ test('o limite de criação não bloqueia o redirecionamento, que tem limite pr�
     const blocked = await fetch(`${apiUrl}/${code}`, { redirect: 'manual' });
     assert.equal(blocked.status, 429);
     assert.ok(blocked.headers.get('retry-after'));
+}));
+
+test('o DELETE conta no limite de acesso, não no de criação', () => withServer({}, async apiUrl => {
+    const { code, manageToken } = await (await shorten(apiUrl)).json();
+    const deleteLink = () => fetch(apiUrl + LINK_PATH.replace(CODE_PARAM, code), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${manageToken}x` },
+    });
+
+    for (let i = 0; i < Number(ACCESS_LIMIT); i++) {
+        assert.equal((await deleteLink()).status, 403);
+    }
+
+    assert.equal((await deleteLink()).status, 429);
+    assert.equal((await fetch(`${apiUrl}/${code}`, { redirect: 'manual' })).status, 429);
+    assert.equal((await shorten(apiUrl)).status, 201);
 }));
 
 test('sem TRUST_PROXY, ignora o X-Forwarded-For e conta pelo IP da conexão', () => withServer({}, async apiUrl => {

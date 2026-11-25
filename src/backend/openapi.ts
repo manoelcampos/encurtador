@@ -1,5 +1,5 @@
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from './alias-validator.ts';
-import { PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { LINK_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { EXPIRATION_OPTIONS } from './expiration.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
 import { STATS_DAYS } from './url-shortener-service.ts';
@@ -17,6 +17,13 @@ const LINK_EXPIRED_RESPONSE = {
     content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
 };
 
+const urlErrorResponse = (description: string) => ({
+    description,
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+});
+
+const MANAGE_TOKEN_SCHEME = 'manageToken';
+
 const TOO_MANY_REQUESTS_RESPONSE = {
     ...errorResponse('Limite de requisições por IP excedido'),
     headers: {
@@ -31,7 +38,8 @@ export function createOpenApiSpec(baseUrl: string) {
         info: {
             title: 'Encurtador de URLs',
             version: '0.1.0',
-            description: 'API pública e aberta, sem autenticação, com limite de requisições por IP.',
+            description: 'API pública e aberta, sem contas, com limite de requisições por IP. '
+                + 'Só apagar um link exige o token de gestão devolvido na criação.',
         },
         servers: [{ url: baseUrl }],
         paths: {
@@ -64,6 +72,28 @@ export function createOpenApiSpec(baseUrl: string) {
                                 + 'que só diferem em maiúsculas. Encurte sem apelido.',
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
                         },
+                    },
+                },
+            },
+            [LINK_PATH]: {
+                delete: {
+                    summary: 'Apaga o link curto',
+                    description: 'Exige o token de gestão (`manageToken`) devolvido na criação, no header '
+                        + '`Authorization: Bearer <token>`. Apaga também os cliques, e o código (ou apelido) fica livre de novo. '
+                        + 'Funciona com o link expirado. Links criados antes do token não têm token e não podem ser apagados (403).',
+                    parameters: [CODE_PARAMETER],
+                    security: [{ [MANAGE_TOKEN_SCHEME]: [] }],
+                    responses: {
+                        204: { description: 'Link apagado' },
+                        401: {
+                            ...urlErrorResponse('Token ausente (`code` = `MANAGE_TOKEN_REQUIRED`).'),
+                            headers: {
+                                'WWW-Authenticate': { description: 'Esquema de autenticação esperado', schema: { type: 'string', const: 'Bearer' } },
+                            },
+                        },
+                        403: urlErrorResponse('Token errado, ou link antigo sem token (`code` = `INVALID_MANAGE_TOKEN`).'),
+                        404: errorResponse('Código não encontrado'),
+                        429: TOO_MANY_REQUESTS_RESPONSE,
                     },
                 },
             },
@@ -167,6 +197,11 @@ export function createOpenApiSpec(baseUrl: string) {
                             description: 'Data de expiração em UTC, ou null se o link não expira.',
                             example: '2026-12-02T12:00:00.000Z',
                         },
+                        manageToken: {
+                            type: 'string',
+                            description: 'Token secreto para apagar o link. Só aparece nesta resposta: guarde-o, ele não pode ser recuperado.',
+                            example: 'q3Jx8m0pZ1vK7yT2nB5cW9eR4uH6aL0dS3fG8jQ1wE4',
+                        },
                     },
                 },
                 ClickStats: {
@@ -196,6 +231,13 @@ export function createOpenApiSpec(baseUrl: string) {
                         error: { type: 'string' },
                         code: { type: 'string', enum: Object.values(UrlErrorCode) },
                     },
+                },
+            },
+            securitySchemes: {
+                [MANAGE_TOKEN_SCHEME]: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    description: 'Token de gestão (`manageToken`) devolvido pelo POST que criou o link.',
                 },
             },
         },

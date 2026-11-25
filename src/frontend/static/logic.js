@@ -14,23 +14,26 @@ const EXTENSAO_QRCODE = '.svg';
 
 /**
  * Mensagem de erro a partir da resposta da API.
- * A API só responde em português; para URL ou apelido recusados e limite excedido, usa o texto traduzido do frontend.
+ * A API só responde em português; para URL ou apelido recusados, token de gestão recusado e limite excedido,
+ * usa o texto traduzido do frontend.
  * @param {unknown} dados corpo JSON da resposta, ou `{}` se não era JSON
  * @param {number} status código HTTP da resposta
  * @param {string | null} [retryAfter] header Retry-After da resposta
  * @returns {string}
  */
 export function mensagemDaApi(dados, status, retryAfter = null) {
+    const codigo = campoTexto(dados, 'code');
     if (status === STATUS_CONFLITO) return texto('MENSAGEM_APELIDO_EM_USO');
-    if (status === STATUS_URL_INVALIDA) return mensagemDeUrlRecusada(campoTexto(dados, 'code'));
-    if (campoTexto(dados, 'code') === CODIGO_APELIDOS_INDISPONIVEIS) return texto('MENSAGEM_APELIDOS_INDISPONIVEIS');
+    if (status === STATUS_URL_INVALIDA) return mensagemDeUrlRecusada(codigo);
+    if (codigo === CODIGO_APELIDOS_INDISPONIVEIS) return texto('MENSAGEM_APELIDOS_INDISPONIVEIS');
+    if (codigo !== undefined && CODIGOS_DO_TOKEN.includes(codigo)) return texto(CHAVES_DOS_CODIGOS_DE_ERRO[codigo]);
     if (status === STATUS_LIMITE_EXCEDIDO) return mensagemDeLimite(retryAfter);
 
     return campoTexto(dados, 'error') ?? texto('MENSAGEM_PADRAO');
 }
 
 /**
- * Chave da tradução para cada `code` de erro 400, 409 ou 503 da API. Deve ter os mesmos códigos que o
+ * Chave da tradução para cada `code` de erro 400, 401, 403, 409 ou 503 da API. Deve ter os mesmos códigos que o
  * UrlErrorCode do backend (há teste).
  * @type {Readonly<Record<string, import('./messages.js').ChaveDeTexto>>}
  */
@@ -45,7 +48,13 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     INVALID_EXPIRATION: 'MENSAGEM_VALIDADE_INVALIDA',
     // Só vem de /:code e do QR Code (410), não do POST; fica aqui para a lista seguir o backend.
     LINK_EXPIRED: 'MENSAGEM_LINK_EXPIRADO',
+    // Vêm do DELETE (401 e 403).
+    MANAGE_TOKEN_REQUIRED: 'MENSAGEM_TOKEN_AUSENTE',
+    INVALID_MANAGE_TOKEN: 'MENSAGEM_TOKEN_INVALIDO',
 });
+
+/** Códigos de erro do token de gestão, que vêm do DELETE. */
+const CODIGOS_DO_TOKEN = Object.freeze(['MANAGE_TOKEN_REQUIRED', 'INVALID_MANAGE_TOKEN']);
 
 const CODIGO_VALIDADE_INVALIDA = 'INVALID_EXPIRATION';
 
@@ -224,6 +233,7 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
  * @property {string} code
  * @property {string} shortUrl
  * @property {string | null} expiresAt data de expiração ISO 8601, ou null se o link não expira
+ * @property {string} manageToken token secreto que permite apagar o link; a API só o devolve na criação
  */
 
 /**

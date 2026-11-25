@@ -13,11 +13,17 @@ export interface UrlRepository {
     readonly uniqueIgnoringCase: boolean;
 
     /**
-     * Grava a URL com o código e a data de expiração (null ou ausente: sem prazo).
-     * Retorna false se o código já existir (ignorando maiúsculas, quando `uniqueIgnoringCase`).
+     * Grava a URL com o código, a data de expiração (null ou ausente: sem prazo) e o hash do token de gestão
+     * (null ou ausente: sem token). Retorna false se o código já existir (ignorando maiúsculas, quando `uniqueIgnoringCase`).
      */
-    add(code: string, url: string, expiresAt?: string | null): Promise<boolean>;
+    add(code: string, url: string, expiresAt?: string | null, manageTokenHash?: string | null): Promise<boolean>;
 
     /** Retorna a URL do código e a data de expiração, ou undefined se o código não existir. */
     find(code: string): Promise<StoredUrl | undefined>;
+
+    /** Hash do token de gestão do código exato; null se o link não tem token (links antigos), undefined se não existe. */
+    findManageTokenHash(code: string): Promise<string | null | undefined>;
+
+    /** Apaga o link do código exato e os cliques dele, numa transação. Retorna false se o código não existir. */
+    delete(code: string): Promise<boolean>;
 }
