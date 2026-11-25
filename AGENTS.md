@@ -34,7 +34,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
@@ -43,7 +43,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `logic.js`: regras sem DOM, testadas com `node --test`.
     - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
-    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409` e `429`, o frontend mostra a mensagem traduzida.
+    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409`, `429` e o `503` de `ALIAS_UNAVAILABLE`, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
 - `test/`: testes automatizados.
 
@@ -76,13 +76,15 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 
 - O campo opcional `alias` do `POST /api/urls` vira o código do link (ex.: `/promo-natal`). Sem ele, o código é gerado.
 - Formato (`ALIAS_PATTERN` em `alias-validator.ts`): de `ALIAS_MIN_LENGTH` (3) a `ALIAS_MAX_LENGTH` (50) letras, números e hífens, sem hífen no início ou no fim. Cabe no `CODE_PATTERN` da rota `/:code` (há teste).
-- Não diferencia maiúsculas: o apelido é gravado em minúsculas, para `Promo` e `promo` não virarem links diferentes. Os códigos gerados continuam diferenciando maiúsculas; por isso, `/:code`, `/qrcode` e `/stats` buscam primeiro o código exato e, só se não acharem e o código em minúsculas tiver formato de apelido, buscam em minúsculas. Cliques e estatísticas vão para o código gravado.
-- Palavras reservadas (`RESERVED_ALIASES`): o primeiro segmento de cada rota da aplicação (derivado de `api-paths.ts` e `static-files.ts`, ex.: `api` e `static`) e alguns nomes que confundiriam quem recebe o link (`admin`, `www` etc.).
+- Não diferencia maiúsculas: o apelido é gravado em minúsculas, para `Promo` e `promo` não virarem links diferentes. Os códigos gerados continuam diferenciando maiúsculas; por isso, `/:code`, `/qrcode` e `/stats` buscam primeiro o código exato e, só se não acharem e o código em minúsculas tiver formato de apelido, buscam em minúsculas. Cliques, estatísticas e o QR Code usam o código gravado.
+- Não existem dois códigos iguais ignorando maiúsculas: o índice único `urls_code_nocase` (`code COLLATE NOCASE`) faz o `add` falhar em conflito, de forma atômica. Assim um apelido não imita um código gerado (ex.: `xk7pq2rt9` contra `Xk7Pq2Rt9`) para quem digita o link com outra caixa: o apelido recebe `409`, e o código gerado que colidir é trocado por outro (laço de tentativas).
+- Bancos antigos podem ter códigos que só diferem em maiúsculas; aí o índice não é criado, a API inicia mesmo assim com um aviso no log (`uniqueIgnoringCase = false` no repositório) e novos apelidos são recusados com `503` e `ALIAS_UNAVAILABLE`. Os códigos gerados continuam funcionando, pois não dependem do índice para ser exatos.
+- Palavras reservadas (`RESERVED_ALIASES`): o primeiro segmento de cada rota da aplicação (derivado de `api-paths.ts` e `static-files.ts`, ex.: `api` e `static`; um teste percorre as constantes de rota e garante que todas estão reservadas) e alguns nomes que confundiriam quem recebe o link (`admin`, `www` etc.).
 - Apelido em uso ou reservado: `409` com `code` `ALIAS_TAKEN` (reservado é tratado como "já usado pela aplicação"). Formato inválido: `400` com `INVALID_ALIAS`. A gravação usa o `add` do repositório, que falha se o código já existir, então dois pedidos simultâneos com o mesmo apelido dão um `201` e um `409`.
 
 ### URLs recusadas
 
-O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409` para `ALIAS_TAKEN`). O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
+O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409` para `ALIAS_TAKEN` e `503` para `ALIAS_UNAVAILABLE`). O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
 
 | `code` | Motivo |
 |--------|--------|
@@ -91,7 +93,8 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `OWN_DOMAIN` | Mesmo host da `BASE_URL` (minúsculas, sem ponto final, qualquer porta, com ou sem `www.`). Evita loops de redirecionamento. Outros subdomínios são aceitos. |
 | `MALICIOUS_URL` | Marcada como possivelmente perigosa pelo `UrlThreatChecker` injetado no `UrlShortenerService`. |
 | `INVALID_ALIAS` | Apelido fora do formato (veja "Apelidos"). |
-| `ALIAS_TAKEN` | Apelido em uso ou reservado. Única recusa com status `409`. |
+| `ALIAS_TAKEN` | Apelido em uso (ignorando maiúsculas) ou reservado. Status `409`. |
+| `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.

@@ -21,6 +21,7 @@ const en = {
     MENSAGEM_URL_MALICIOSA: 'This URL may be dangerous and cannot be shortened. Advisory provided by Google.',
     MENSAGEM_APELIDO_INVALIDO: 'The alias must have 3 to 50 letters, numbers or hyphens, with no hyphen at the start or end.',
     MENSAGEM_APELIDO_EM_USO: 'This alias is already in use. Choose another one.',
+    MENSAGEM_APELIDOS_INDISPONIVEIS: 'Aliases are temporarily unavailable. Leave the alias field empty.',
     MENSAGEM_CONEXAO: 'Could not connect to the server.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Too many requests. Please wait a moment and try again.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Too many requests. Try again in {minutos} min.',

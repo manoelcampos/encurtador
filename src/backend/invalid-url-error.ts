@@ -11,6 +11,8 @@ export const UrlErrorCode = {
     INVALID_ALIAS: 'INVALID_ALIAS',
     /** Apelido já usado por outro link ou reservado pela aplicação; a API responde 409. */
     ALIAS_TAKEN: 'ALIAS_TAKEN',
+    /** Apelidos desativados porque o banco tem códigos que só diferem em maiúsculas; a API responde 503. */
+    ALIAS_UNAVAILABLE: 'ALIAS_UNAVAILABLE',
 } as const;
 
 export type UrlErrorCode = typeof UrlErrorCode[keyof typeof UrlErrorCode];

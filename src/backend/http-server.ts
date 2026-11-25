@@ -29,6 +29,11 @@ const TOO_MANY_REQUESTS = 429;
 const TOO_MANY_REQUESTS_MESSAGE = 'Limite de requisições excedido. Tente de novo mais tarde.';
 const BAD_REQUEST = 400;
 const CONFLICT = 409;
+const SERVICE_UNAVAILABLE = 503;
+const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
+    [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
+    [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
+};
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
@@ -119,8 +124,9 @@ async function shorten(service: UrlShortenerService, baseUrl: string, req: Incom
 }
 
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
-    requireCode(await service.resolve(code));
-    send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(code, baseUrl)));
+    // O QR Code leva o código gravado (ex.: o apelido em minúsculas), não o texto pedido.
+    const { code: storedCode } = requireCode(await service.find(code));
+    send(res, 200, { 'Content-Type': 'image/svg+xml' }, createQrCodeSvg(shortUrlOf(storedCode, baseUrl)));
 }
 
 async function sendStats(service: UrlShortenerService, code: string, res: ServerResponse) {
@@ -184,7 +190,7 @@ function sendError(res: ServerResponse, error: unknown) {
     }
 
     if (error instanceof InvalidUrlError) {
-        const status = error.code === UrlErrorCode.ALIAS_TAKEN ? CONFLICT : BAD_REQUEST;
+        const status = ERROR_STATUS[error.code] ?? BAD_REQUEST;
         return sendJson(res, status, { error: error.message, code: error.code });
     }
 

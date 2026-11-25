@@ -23,13 +23,14 @@ const EXTENSAO_QRCODE = '.svg';
 export function mensagemDaApi(dados, status, retryAfter = null) {
     if (status === STATUS_CONFLITO) return texto('MENSAGEM_APELIDO_EM_USO');
     if (status === STATUS_URL_INVALIDA) return mensagemDeUrlRecusada(campoTexto(dados, 'code'));
+    if (campoTexto(dados, 'code') === CODIGO_APELIDOS_INDISPONIVEIS) return texto('MENSAGEM_APELIDOS_INDISPONIVEIS');
     if (status === STATUS_LIMITE_EXCEDIDO) return mensagemDeLimite(retryAfter);
 
     return campoTexto(dados, 'error') ?? texto('MENSAGEM_PADRAO');
 }
 
 /**
- * Chave da tradução para cada `code` de erro 400 ou 409 da API. Deve ter os mesmos códigos que o
+ * Chave da tradução para cada `code` de erro 400, 409 ou 503 da API. Deve ter os mesmos códigos que o
  * UrlErrorCode do backend (há teste).
  * @type {Readonly<Record<string, import('./messages.js').ChaveDeTexto>>}
  */
@@ -40,10 +41,14 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     MALICIOUS_URL: 'MENSAGEM_URL_MALICIOSA',
     INVALID_ALIAS: 'MENSAGEM_APELIDO_INVALIDO',
     ALIAS_TAKEN: 'MENSAGEM_APELIDO_EM_USO',
+    ALIAS_UNAVAILABLE: 'MENSAGEM_APELIDOS_INDISPONIVEIS',
 });
 
+/** Vem com status 503: o servidor desativou os apelidos. */
+const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
+
 /** Códigos de erro causados pelo apelido, não pela URL. */
-const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN']);
+const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN', CODIGO_APELIDOS_INDISPONIVEIS]);
 
 /** Campos do formulário que a API pode recusar; os valores são os ids dos campos no HTML. */
 export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido' });

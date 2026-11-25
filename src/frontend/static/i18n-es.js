@@ -21,6 +21,7 @@ const es = {
     MENSAGEM_URL_MALICIOSA: 'Esta URL puede ser peligrosa y no se puede acortar. Aviso proporcionado por Google.',
     MENSAGEM_APELIDO_INVALIDO: 'El alias debe tener de 3 a 50 letras, números o guiones, sin guion al inicio ni al final.',
     MENSAGEM_APELIDO_EM_USO: 'Este alias ya está en uso. Elige otro.',
+    MENSAGEM_APELIDOS_INDISPONIVEIS: 'Los alias no están disponibles por ahora. Deja vacío el campo de alias.',
     MENSAGEM_CONEXAO: 'Error de conexión con el servidor.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Has hecho demasiadas solicitudes. Espera un poco y vuelve a intentarlo.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Has hecho demasiadas solicitudes. Vuelve a intentarlo en {minutos} min.',

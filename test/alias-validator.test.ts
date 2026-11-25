@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH, RESERVED_ALIASES, validateAlias } from '../src/backend/alias-validator.ts';
+import * as apiPaths from '../src/backend/api-paths.ts';
 import { CODE_PATTERN } from '../src/backend/code-generator.ts';
+import * as staticFiles from '../src/frontend/static-files.ts';
 import { InvalidUrlError, UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 
 const throwsWith = (input: unknown, code: UrlErrorCode) =>
@@ -28,7 +30,15 @@ test('recusa formato inválido com INVALID_ALIAS', () => {
     }
 });
 
-test('reserva o primeiro segmento das rotas da aplicação', () => {
+test('reserva o primeiro segmento de toda rota exportada pela aplicação', () => {
+    // Percorre as constantes para que uma rota nova fora da lista de RESERVED_ALIASES quebre este teste.
+    const routes = [...Object.values(apiPaths), ...Object.values(staticFiles)]
+        .filter((value): value is string => typeof value === 'string' && value.startsWith('/'));
+    assert.ok(routes.length > 0);
+    for (const route of routes) {
+        assert.ok(RESERVED_ALIASES.has(route.split('/')[1]), route);
+    }
+
     assert.ok(RESERVED_ALIASES.has('api'));
     assert.ok(RESERVED_ALIASES.has('static'));
 });

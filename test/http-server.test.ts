@@ -118,6 +118,29 @@ test('apelido com formato inválido devolve 400 com INVALID_ALIAS', async () => 
     }
 });
 
+test('o QR Code do apelido pedido com outra caixa leva o código gravado', async () => {
+    assert.equal((await postAlias('qr-promo')).status, 201);
+    const res = await fetch(apiUrl + QRCODE_PATH.replace(CODE_PARAM, 'QR-Promo'));
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), createQrCodeSvg(`${BASE_URL}qr-promo`));
+});
+
+test('com apelidos desativados no repositório, responde 503 com ALIAS_UNAVAILABLE', async () => {
+    const sqlite = new SqliteUrlRepository(':memory:');
+    const legacyRepository = { uniqueIgnoringCase: false, add: sqlite.add.bind(sqlite), find: sqlite.find.bind(sqlite) };
+    const legacyServer = createApiServer(new UrlShortenerService(legacyRepository, BASE_URL), BASE_URL);
+    await new Promise<void>(resolve => legacyServer.listen(0, resolve));
+    const legacyUrl = `http://localhost:${(legacyServer.address() as AddressInfo).port}`;
+
+    try {
+        const res = await fetch(legacyUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/', alias: 'promo' }) });
+        assert.equal(res.status, 503);
+        assert.equal((await res.json()).code, UrlErrorCode.ALIAS_UNAVAILABLE);
+    } finally {
+        legacyServer.close();
+    }
+});
+
 test('dois POSTs simultâneos com o mesmo apelido: um 201 e um 409', async () => {
     const statuses = (await Promise.all([postAlias('corrida'), postAlias('corrida')])).map(res => res.status);
     assert.deepEqual(statuses.sort(), [201, 409]);

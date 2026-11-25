@@ -52,6 +52,11 @@ export function createOpenApiSpec(baseUrl: string) {
                         },
                         413: errorResponse('Corpo da requisição grande demais'),
                         429: TOO_MANY_REQUESTS_RESPONSE,
+                        503: {
+                            description: 'Apelidos desativados (`code` = `ALIAS_UNAVAILABLE`), porque o banco tem códigos antigos '
+                                + 'que só diferem em maiúsculas. Encurte sem apelido.',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
+                        },
                     },
                 },
             },

@@ -40,4 +40,8 @@ export function validateAlias(input: unknown): string | undefined {
     return alias;
 }
 
+export const aliasUnavailableError = () => new InvalidUrlError(
+    'Apelidos estão temporariamente indisponíveis. Encurte sem apelido.', UrlErrorCode.ALIAS_UNAVAILABLE,
+);
+
 export const aliasTakenError = () => new InvalidUrlError('Este apelido já está em uso. Escolha outro.', UrlErrorCode.ALIAS_TAKEN);

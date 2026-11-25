@@ -162,6 +162,8 @@ form.addEventListener('submit', async event => {
 
     try {
         mostrarLink(await encurtar(caminhoApi, input.value.trim(), apelido.value.trim()));
+        // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
+        apelido.value = '';
     } catch (error) {
         mostrarErro(mensagemDeFalha(error), error instanceof ApiError ? campoInvalido(error.status, error.codigo) : undefined);
     } finally {

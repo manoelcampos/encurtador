@@ -86,6 +86,9 @@ test('usa as mensagens traduzidas de apelido inválido (400) e em uso (409)', ()
     assert.equal(mensagemDaApi({ code: 'INVALID_ALIAS' }, 400), texto('MENSAGEM_APELIDO_INVALIDO'));
     assert.equal(mensagemDaApi({ code: 'ALIAS_TAKEN' }, 409), texto('MENSAGEM_APELIDO_EM_USO'));
     assert.equal(mensagemDaApi({}, 409), texto('MENSAGEM_APELIDO_EM_USO'));
+    assert.equal(mensagemDaApi({ error: 'x', code: 'ALIAS_UNAVAILABLE' }, 503), texto('MENSAGEM_APELIDOS_INDISPONIVEIS'));
+    assert.equal(mensagemDaApi({ error: 'Falhou.' }, 503), 'Falhou.');
+    assert.equal(campoInvalido(503, 'ALIAS_UNAVAILABLE'), CAMPO.APELIDO);
 });
 
 test('só envia o apelido quando preenchido', () => {

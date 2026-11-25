@@ -1,6 +1,6 @@
 import { type ClickRepository, type DailyClicks, NO_CLICK_REPOSITORY } from '../data/click-repository.ts';
 import type { UrlRepository } from '../data/url-repository.ts';
-import { ALIAS_PATTERN, aliasTakenError, validateAlias } from './alias-validator.ts';
+import { ALIAS_PATTERN, aliasTakenError, aliasUnavailableError, validateAlias } from './alias-validator.ts';
 import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
@@ -25,7 +25,7 @@ export interface UrlShortenerOptions {
 }
 
 /** Link encontrado: o código como está gravado e a URL original. */
-interface StoredLink {
+export interface StoredLink {
     code: string;
     url: string;
 }
@@ -78,6 +78,10 @@ export class UrlShortenerService {
 
     /** O `add` falha se o código já existir, então não há corrida entre checar e gravar. */
     async #addAlias(alias: string, url: string): Promise<string> {
+        if (!this.#repository.uniqueIgnoringCase) {
+            throw aliasUnavailableError();
+        }
+
         if (!await this.#repository.add(alias, url)) {
             throw aliasTakenError();
         }
@@ -86,14 +90,14 @@ export class UrlShortenerService {
     }
 
     async resolve(code: string): Promise<string | undefined> {
-        return (await this.#find(code))?.url;
+        return (await this.find(code))?.url;
     }
 
     /**
-     * Busca o código exato (os gerados diferenciam maiúsculas) e, se não achar e ele tiver formato de apelido
+     * Link do código, com o código como está gravado. Busca o código exato (os gerados diferenciam maiúsculas) e, se não achar e ele tiver formato de apelido
      * depois de passar para minúsculas, busca em minúsculas, pois os apelidos são gravados assim.
      */
-    async #find(code: string): Promise<StoredLink | undefined> {
+    async find(code: string): Promise<StoredLink | undefined> {
         const url = await this.#repository.find(code);
         if (url) {
             return { code, url };
@@ -106,7 +110,7 @@ export class UrlShortenerService {
 
     /** Resolve o código para redirecionar e registra o clique. Falha ao registrar não impede o redirecionamento. */
     async visit(code: string): Promise<string | undefined> {
-        const link = await this.#find(code);
+        const link = await this.find(code);
         if (link) {
             await this.#recordClick(link.code);
         }
@@ -124,7 +128,7 @@ export class UrlShortenerService {
 
     /** Estatísticas de cliques do código, ou undefined se ele não existir. */
     async stats(requestedCode: string): Promise<ClickStats | undefined> {
-        const code = (await this.#find(requestedCode))?.code;
+        const code = (await this.find(requestedCode))?.code;
         if (!code) {
             return undefined;
         }

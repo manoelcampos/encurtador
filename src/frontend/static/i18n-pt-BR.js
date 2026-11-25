@@ -20,6 +20,7 @@ const ptBR = {
     MENSAGEM_URL_MALICIOSA: 'Esta URL pode ser perigosa e não pode ser encurtada. Aviso fornecido pelo Google.',
     MENSAGEM_APELIDO_INVALIDO: 'O apelido deve ter de 3 a 50 letras, números ou hífens, sem hífen no início ou no fim.',
     MENSAGEM_APELIDO_EM_USO: 'Este apelido já está em uso. Escolha outro.',
+    MENSAGEM_APELIDOS_INDISPONIVEIS: 'Apelidos estão temporariamente indisponíveis. Deixe o campo de apelido vazio.',
     MENSAGEM_CONEXAO: 'Falha de conexão com o servidor.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Você fez muitas requisições. Aguarde um pouco e tente de novo.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Você fez muitas requisições. Tente de novo em {minutos} min.',
