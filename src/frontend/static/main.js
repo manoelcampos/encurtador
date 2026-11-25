@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
-import { copiarLink, mensagemDeFalha, qrCodeDoLink, urlInvalida } from './logic.js';
+import { avisarDeNovo, copiarLink, mensagemDeFalha, qrCodeDoLink, urlInvalida } from './logic.js';
 import { AVISO_OPCOES_COMPARTILHAMENTO } from './messages.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
 
@@ -81,7 +81,7 @@ function criarOpcaoDeRede({ rotulo, href, externo }) {
 function mostrarRedes() {
     redes.replaceChildren(...linksDeCompartilhamento(link.textContent).map(criarOpcaoDeRede));
     redes.hidden = false;
-    aviso.textContent = AVISO_OPCOES_COMPARTILHAMENTO;
+    avisarDeNovo(dependenciasAviso, AVISO_OPCOES_COMPARTILHAMENTO);
 }
 
 async function compartilharLink() {
@@ -119,14 +119,17 @@ async function copiar(texto) {
     }
 }
 
+/** @type {import('./logic.js').DependenciasAviso} */
+const dependenciasAviso = {
+    avisar: mensagem => { aviso.textContent = mensagem; },
+    aposAtraso: acao => { setTimeout(acao, ATRASO_AVISO_MS); },
+};
+
 const dependenciasCopia = {
+    ...dependenciasAviso,
     copiar,
     linkAtual: () => link.textContent,
-    /** @param {string} mensagem */
-    avisar: mensagem => { aviso.textContent = mensagem; },
     selecionar: selecionarLink,
-    /** @param {() => void} acao */
-    aposAtraso: acao => { setTimeout(acao, ATRASO_AVISO_MS); },
 };
 
 elemento('copiar', HTMLButtonElement).addEventListener('click', () => copiarLink(dependenciasCopia));

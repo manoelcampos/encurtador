@@ -51,6 +51,25 @@ export function avisoDeCopia(sucesso) {
 }
 
 /**
+ * @typedef {object} DependenciasAviso
+ * @property {(mensagem: string) => void} avisar escreve o aviso para o leitor de tela
+ * @property {(acao: () => void) => void} aposAtraso executa a ação depois do atraso do aviso
+ */
+
+/**
+ * Limpa o aviso e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
+ * @param {DependenciasAviso} deps
+ * @param {string} mensagem
+ * @param {() => boolean} [aindaValido] se a mensagem ainda deve ser escrita depois do atraso
+ */
+export function avisarDeNovo({ avisar, aposAtraso }, mensagem, aindaValido = () => true) {
+    avisar('');
+    aposAtraso(() => {
+        if (aindaValido()) avisar(mensagem);
+    });
+}
+
+/**
  * @typedef {object} DependenciasCopia
  * @property {(texto: string) => Promise<boolean>} copiar copia o texto e diz se deu certo
  * @property {() => string} linkAtual link mostrado agora
@@ -68,11 +87,7 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
     const sucesso = await copiar(copiado);
     if (linkMudou(copiado, linkAtual())) return;
 
-    // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
-    avisar('');
-    aposAtraso(() => {
-        if (!linkMudou(copiado, linkAtual())) avisar(avisoDeCopia(sucesso));
-    });
+    avisarDeNovo({ avisar, aposAtraso }, avisoDeCopia(sucesso), () => !linkMudou(copiado, linkAtual()));
     if (!sucesso) selecionar();
 }
 

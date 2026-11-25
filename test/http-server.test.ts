@@ -137,6 +137,8 @@ test('a interface web tem botão para copiar o link curto', async () => {
     const html = await (await fetch(`${apiUrl}/`)).text();
     assert.match(html, /<button type="button" id="copiar">Copiar link<\/button>/);
     assert.match(html, /<p id="aviso" role="status"><\/p>/);
+    assert.match(html, /id="compartilhar"/);
+    assert.match(html, /id="redes"/);
 
     const js = await (await fetch(`${apiUrl}${STATIC_PATH}main.js`)).text();
     assert.match(js, /navigator\.clipboard\.writeText\(/);
