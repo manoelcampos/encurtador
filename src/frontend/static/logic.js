@@ -77,23 +77,21 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
 }
 
 /**
- * Código curto, que é o último trecho do caminho do link curto.
- * @param {string} shortUrl
+ * Link curto devolvido pela API.
+ * @typedef {object} LinkCurto
+ * @property {string} code
+ * @property {string} shortUrl
  */
-export function codigoDoLink(shortUrl) {
-    return new URL(shortUrl).pathname.split('/').pop() ?? '';
-}
 
 /**
  * Endereço, nome do arquivo para download e texto alternativo do QR Code do link curto.
  * @param {string} rotaQrCode rota da API com o marcador do código
- * @param {string} shortUrl
+ * @param {LinkCurto} linkCurto
  */
-export function qrCodeDoLink(rotaQrCode, shortUrl) {
-    const codigo = codigoDoLink(shortUrl);
+export function qrCodeDoLink(rotaQrCode, { code, shortUrl }) {
     return {
-        src: rotaQrCode.replace(MARCADOR_CODIGO, encodeURIComponent(codigo)),
-        nomeArquivo: PREFIXO_ARQUIVO_QRCODE + codigo + EXTENSAO_QRCODE,
+        src: rotaQrCode.replace(MARCADOR_CODIGO, encodeURIComponent(code)),
+        nomeArquivo: PREFIXO_ARQUIVO_QRCODE + code + EXTENSAO_QRCODE,
         alt: `${ALT_QRCODE} ${shortUrl}`,
     };
 }

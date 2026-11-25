@@ -17,14 +17,14 @@ function responder(status: number, corpo: string) {
     globalThis.fetch = async () => new Response(corpo, { status });
 }
 
-test('devolve o shortUrl quando a API responde 201', async () => {
+test('devolve o código e o shortUrl quando a API responde 201', async () => {
     let pedido: { input: unknown; init?: RequestInit } | undefined;
     globalThis.fetch = async (input, init) => {
         pedido = { input, init };
         return new Response(JSON.stringify({ code: 'abc', shortUrl: 'https://encurta.do/abc' }), { status: 201 });
     };
 
-    assert.equal(await encurtar(SHORTEN_PATH, URL_LONGA), 'https://encurta.do/abc');
+    assert.deepEqual(await encurtar(SHORTEN_PATH, URL_LONGA), { code: 'abc', shortUrl: 'https://encurta.do/abc' });
     assert.equal(pedido?.input, SHORTEN_PATH);
     assert.equal(pedido?.init?.method, 'POST');
     assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA });

@@ -48,18 +48,18 @@ function mostrarErro(mensagem, invalida) {
     }
 }
 
-/** @param {string} shortUrl */
-function mostrarLink(shortUrl) {
-    link.href = shortUrl;
-    link.textContent = shortUrl;
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarLink(linkCurto) {
+    link.href = linkCurto.shortUrl;
+    link.textContent = linkCurto.shortUrl;
     resultado.hidden = false;
     acoes.hidden = false;
-    mostrarQrCode(shortUrl);
+    mostrarQrCode(linkCurto);
 }
 
-/** @param {string} shortUrl */
-function mostrarQrCode(shortUrl) {
-    const { src, nomeArquivo, alt } = qrCodeDoLink(rotaQrCode, shortUrl);
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarQrCode(linkCurto) {
+    const { src, nomeArquivo, alt } = qrCodeDoLink(rotaQrCode, linkCurto);
     qrCode.src = src;
     qrCode.alt = alt;
     qrCode.hidden = false;

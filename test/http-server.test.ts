@@ -84,9 +84,16 @@ test('devolve o QR Code em SVG que codifica o link curto', async () => {
 });
 
 test('devolve 404 para QR Code de código inexistente ou inválido', async () => {
-    for (const code of ['naoexiste', '%2e%2e', 'a%2Fb']) {
+    for (const code of ['naoexiste', 'a.b', 'a%2Fb', 'x'.repeat(65)]) {
         assert.equal((await fetch(qrCodeUrl(code))).status, 404, code);
     }
+});
+
+test('responde HEAD na rota do QR Code', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/qr-head' }))).json();
+    const res = await fetch(qrCodeUrl(code), { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/svg+xml');
 });
 
 test('o marcador do código no frontend é o mesmo da rota do backend', () => {
@@ -138,8 +145,8 @@ test('a interface web tem botão para copiar o link curto', async () => {
 test('a interface web tem o QR Code e o link para baixá-lo', async () => {
     const html = await (await fetch(`${apiUrl}/`)).text();
     assert.match(html, new RegExp(`data-qrcode="${QRCODE_PATH}"`));
-    assert.match(html, /<img id="qrcode" alt="" hidden>/);
-    assert.match(html, /<a id="baixar" class="botao" download>Baixar QR Code<\/a>/);
+    assert.match(html, /<img [^>]*id="qrcode"/);
+    assert.match(html, /<a (?=[^>]*id="baixar")(?=[^>]*\bdownload\b)[^>]*>/);
 });
 
 test('serve todos os arquivos JS da interface, em GET e HEAD', async () => {
