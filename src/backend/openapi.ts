@@ -61,8 +61,8 @@ export function createOpenApiSpec(baseUrl: string) {
                 ShortenResponse: {
                     type: 'object',
                     properties: {
-                        code: { type: 'string', example: 'AbC123xY' },
-                        shortUrl: { type: 'string', format: 'uri', example: `${baseUrl}AbC123xY` },
+                        code: { type: 'string', example: 'AbC234xYz' },
+                        shortUrl: { type: 'string', format: 'uri', example: `${baseUrl}AbC234xYz` },
                     },
                 },
                 Error: {

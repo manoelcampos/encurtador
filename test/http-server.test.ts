@@ -32,6 +32,22 @@ test('POST encurta e GET redireciona', async () => {
     assert.equal(redirect.headers.get('location'), 'https://example.com/page');
 });
 
+test('código antigo em base64url continua redirecionando', async () => {
+    const legacyCode = 'aB-_lO01';
+    const legacyServer = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:'), () => legacyCode), BASE_URL);
+    await new Promise<void>(resolve => legacyServer.listen(0, resolve));
+    const legacyUrl = `http://localhost:${(legacyServer.address() as AddressInfo).port}`;
+
+    try {
+        await fetch(legacyUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/antigo' }) });
+        const redirect = await fetch(`${legacyUrl}/${legacyCode}`, { redirect: 'manual' });
+        assert.equal(redirect.status, 302);
+        assert.equal(redirect.headers.get('location'), 'https://example.com/antigo');
+    } finally {
+        legacyServer.close();
+    }
+});
+
 test('devolve 400 para JSON ou URL inválidos', async () => {
     assert.equal((await post('{quebrado')).status, 400);
     assert.equal((await post('null')).status, 400);
