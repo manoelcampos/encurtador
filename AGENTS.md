@@ -29,7 +29,7 @@ Os scripts abaixo devem existir no `package.json`. Atualize esta seção se muda
 | Rodar o build | `npm start` |
 
 Antes de concluir uma tarefa, rode testes, lint e build, e corrija o que falhar.
-O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo push para `main` e em todo pull request, com a versão do Node definida em `engines` no `package.json`.
+O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo push para `main` e em todo pull request, com a versão do Node definida em `engines` no `package.json`, e também constrói a imagem Docker.
 
 ## Estrutura
 
@@ -63,10 +63,17 @@ API pública e aberta, sem contas, com CORS liberado para qualquer origem (inclu
 | `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
 | `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou ou esgotou os acessos. Só `GET` conta como clique e gasta acesso; `HEAD` de link com limite dá `200` sem `Location`. |
 | `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar, sem contar clique e sem gastar acesso (sem o destino em link com limite), `404`, ou `410` se o link expirou ou esgotou os acessos. Veja "Pré-visualização". |
+| `GET`, `HEAD` | `/api/health` | Saúde da aplicação para orquestradores: `200 {"status":"ok"}` se o banco responde (`ping` do repositório, `SELECT 1`), senão `503`. Não conta no limite de requisições, pois é chamada com frequência e sempre do mesmo IP. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
-Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://localhost:PORT`), `DB_PATH` (padrão `encurtador.db`) e `SAFE_BROWSING_API_KEY` (veja abaixo).
+Variáveis de ambiente: a tabela completa fica só no [README](README.md#variáveis-de-ambiente); atualize-a ao criar ou mudar uma.
+
+### Docker e encerramento
+
+- O `Dockerfile` é multi-stage: o estágio de build roda `npm ci` e `npm run build`; o final (`node:<versão>-slim`, fixada) só tem as dependências de produção e o `dist/`, roda como o usuário `node`, guarda o banco no volume `/data` e tem `HEALTHCHECK` com `fetch` em `/api/health` (a imagem slim não tem curl).
+- O `CMD` chama o `node` direto, sem `npm start`, para o `SIGTERM` chegar ao processo.
+- Em `SIGTERM`/`SIGINT`, o `main.ts` fecha o servidor HTTP e depois o banco, o que grava o WAL no arquivo principal. Um segundo sinal sai na hora com `process.exit(1)`, pois no container o node é o PID 1 e ignoraria o sinal sem handler (há testes).
 
 ### Contagem de cliques
 
@@ -173,15 +180,8 @@ Termos do Safe Browsing: a API é só para uso não comercial (para uso comercia
 
 Ao passar do limite, a API responde `429` com o header `Retry-After` (segundos) e corpo `{"error": "..."}`.
 Os limites usam janela fixa, em memória (`FixedWindowRateLimiter`, atrás da interface `RateLimiter`), então não são compartilhados entre várias instâncias.
-Valor inválido nestas variáveis impede a API de iniciar, com uma mensagem que diz qual variável está errada.
-
-| Variável | Padrão | Descrição |
-|----------|--------|-----------|
-| `CREATE_RATE_LIMIT` | `30` | Criações (`POST /api/urls`) por IP em cada janela. |
-| `CREATE_RATE_WINDOW_SECONDS` | `3600` | Duração da janela de criação, em segundos. |
-| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code, estatísticas, `DELETE` etc.) por IP em cada janela. |
-| `ACCESS_RATE_WINDOW_SECONDS` | `60` | Duração da janela de acesso, em segundos. |
-| `TRUST_PROXY` | `false` | Com `true`, o IP do cliente é o **último** valor do header `X-Forwarded-For`. Isso só serve para **um único** proxy confiável na frente da API: com dois ou mais, o último valor é o IP de um proxy, e todos os clientes dividem o mesmo limite. Só ligue se a API não puder ser acessada sem passar pelo proxy, senão qualquer cliente forja o próprio IP. Com `false`, usa o IP da conexão. |
+As variáveis (`CREATE_RATE_LIMIT`, `CREATE_RATE_WINDOW_SECONDS`, `ACCESS_RATE_LIMIT`, `ACCESS_RATE_WINDOW_SECONDS` e `TRUST_PROXY`) estão no [README](README.md#variáveis-de-ambiente). Valor inválido nelas impede a API de iniciar.
+`OPTIONS` e `/api/health` não contam no limite.
 
 IPv4 (inclusive mapeado em IPv6, como `::ffff:203.0.113.1`) é limitado por endereço. IPv6 é limitado pelo prefixo `/64`, pois um cliente costuma ter o bloco inteiro e poderia trocar de endereço para burlar o limite.
 

@@ -22,3 +22,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # Garante que o Dockerfile continua construindo a imagem (não publica nada).
+      - run: docker build -t encurtador .

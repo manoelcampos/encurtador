@@ -146,6 +146,10 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         return rows.map(row => ({ date: String(row.date), clicks: Number(row.clicks) }));
     }
 
+    async ping(): Promise<void> {
+        this.#db.prepare('SELECT 1').get();
+    }
+
     close(): void {
         this.#db.close();
     }

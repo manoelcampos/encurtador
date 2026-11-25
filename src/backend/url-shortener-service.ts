@@ -85,6 +85,11 @@ export class UrlShortenerService {
         this.#now = options.now ?? (() => new Date());
     }
 
+    /** Lança erro se o armazenamento não responder. */
+    checkHealth(): Promise<void> {
+        return this.#repository.ping();
+    }
+
     /**
      * Valida a URL, grava com o apelido (se informado) ou com um código novo e retorna o código e a expiração.
      * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.

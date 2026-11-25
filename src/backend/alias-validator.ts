@@ -1,4 +1,4 @@
-import { DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { DOCS_PATH, HEALTH_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { STATIC_PATH } from '../frontend/static-files.ts';
 
@@ -12,7 +12,7 @@ const firstSegment = (path: string) => path.split('/')[1];
 
 /** Primeiros segmentos das rotas da aplicação, mais nomes que confundiriam quem recebe o link. */
 export const RESERVED_ALIASES: ReadonlySet<string> = new Set([
-    ...[SHORTEN_PATH, OPENAPI_PATH, DOCS_PATH, QRCODE_PATH, STATS_PATH, STATIC_PATH].map(firstSegment),
+    ...[SHORTEN_PATH, OPENAPI_PATH, DOCS_PATH, HEALTH_PATH, QRCODE_PATH, STATS_PATH, STATIC_PATH].map(firstSegment),
     'admin', 'www', 'login', 'help',
 ]);
 
