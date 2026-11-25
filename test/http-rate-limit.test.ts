@@ -10,6 +10,8 @@ import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
 const BASE_URL = 'https://encurta.do/';
 const CREATE_LIMIT = '2';
 const ACCESS_LIMIT = '3';
+// Maior que o MAX_BODY_BYTES do servidor (10 KiB).
+const OVERSIZED_BODY_BYTES = 20 * 1024;
 const FORWARDED_IPS = ['198.51.100.1', '198.51.100.2', '198.51.100.3'];
 
 type Env = Record<string, string>;
@@ -74,4 +76,22 @@ test('sem TRUST_PROXY, ignora o X-Forwarded-For e conta pelo IP da conexão', ()
 
 test('com TRUST_PROXY, conta pelo último IP do X-Forwarded-For', () => withServer({ TRUST_PROXY: 'true' }, async apiUrl => {
     assert.deepEqual(await shortenStatuses(apiUrl), [201, 201, 201]);
+}));
+
+test('OPTIONS não conta no limite', () => withServer({}, async apiUrl => {
+    for (let i = 0; i <= Number(ACCESS_LIMIT); i++) {
+        assert.equal((await fetch(apiUrl + SHORTEN_PATH, { method: 'OPTIONS' })).status, 204);
+    }
+
+    assert.equal((await shorten(apiUrl)).status, 201);
+    assert.equal((await fetch(`${apiUrl}/`)).status, 200);
+}));
+
+test('depois do limite de criação, um corpo grande demais recebe 429 e não 413', () => withServer({}, async apiUrl => {
+    for (let i = 0; i < Number(CREATE_LIMIT); i++) {
+        await shorten(apiUrl);
+    }
+
+    const res = await fetch(apiUrl + SHORTEN_PATH, { method: 'POST', body: 'x'.repeat(OVERSIZED_BODY_BYTES) });
+    assert.equal(res.status, 429);
 }));

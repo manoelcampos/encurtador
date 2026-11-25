@@ -43,6 +43,16 @@ test('lança ApiError com status 400 e a mensagem traduzida de URL inválida', a
     });
 });
 
+test('lança ApiError 429 com os minutos de espera lidos do Retry-After', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Limite.' }), { status: 429, headers: { 'Retry-After': '90' } });
+    await assert.rejects(encurtar(SHORTEN_PATH, URL_LONGA), (error: unknown) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, 429);
+        assert.equal(error.message, texto('MENSAGEM_LIMITE_EXCEDIDO_MINUTOS').replace('{minutos}', '2'));
+        return true;
+    });
+});
+
 test('lança ApiError com a mensagem padrão quando o corpo não é JSON (ex.: 502 de proxy)', async () => {
     responder(502, '<html>Bad Gateway</html>');
     await assert.rejects(encurtar(SHORTEN_PATH, URL_LONGA), (error: unknown) => {
