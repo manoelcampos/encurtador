@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, urlInvalida } from '../src/frontend/static/logic.js';
-import { AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
+import { avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
+import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
 
 test('usa a mensagem de erro da API quando ela vem no corpo', () => {
     assert.equal(mensagemDaApi({ error: 'URL inválida.' }), 'URL inválida.');
@@ -94,4 +94,12 @@ test('não avisa se o link mudou durante o atraso do aviso', async () => {
     copia.trocarLink(OUTRO_LINK);
     copia.rodarAtraso();
     assert.deepEqual(copia.avisos, ['']);
+});
+
+test('monta o endereço, o nome do arquivo e o texto alternativo do QR Code', () => {
+    assert.deepEqual(qrCodeDoLink('/api/urls/{code}/qrcode', { code: 'AbC234xYz', shortUrl: 'https://encurta.do/AbC234xYz' }), {
+        src: '/api/urls/AbC234xYz/qrcode',
+        nomeArquivo: 'qrcode-AbC234xYz.svg',
+        alt: `${ALT_QRCODE} https://encurta.do/AbC234xYz`,
+    });
 });

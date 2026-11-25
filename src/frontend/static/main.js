@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { ApiError, encurtar } from './api.js';
-import { copiarLink, mensagemDeFalha, urlInvalida } from './logic.js';
+import { copiarLink, mensagemDeFalha, qrCodeDoLink, urlInvalida } from './logic.js';
 
 /**
  * @template {Element} T
@@ -28,7 +28,10 @@ const resultado = elemento('resultado', HTMLElement);
 const link = elemento('link', HTMLAnchorElement);
 const acoes = elemento('acoes', HTMLElement);
 const aviso = elemento('aviso', HTMLElement);
+const qrCode = elemento('qrcode', HTMLImageElement);
+const baixar = elemento('baixar', HTMLAnchorElement);
 const caminhoApi = form.dataset.api ?? '';
+const rotaQrCode = form.dataset.qrcode ?? '';
 
 /**
  * @param {string} mensagem
@@ -38,18 +41,30 @@ function mostrarErro(mensagem, invalida) {
     erro.textContent = mensagem;
     resultado.hidden = true;
     acoes.hidden = true;
+    qrCode.hidden = true;
     if (invalida) {
         input.setAttribute('aria-invalid', 'true');
         input.focus();
     }
 }
 
-/** @param {string} shortUrl */
-function mostrarLink(shortUrl) {
-    link.href = shortUrl;
-    link.textContent = shortUrl;
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarLink(linkCurto) {
+    link.href = linkCurto.shortUrl;
+    link.textContent = linkCurto.shortUrl;
     resultado.hidden = false;
     acoes.hidden = false;
+    mostrarQrCode(linkCurto);
+}
+
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarQrCode(linkCurto) {
+    const { src, nomeArquivo, alt } = qrCodeDoLink(rotaQrCode, linkCurto);
+    qrCode.src = src;
+    qrCode.alt = alt;
+    qrCode.hidden = false;
+    baixar.href = src;
+    baixar.download = nomeArquivo;
 }
 
 function selecionarLink() {

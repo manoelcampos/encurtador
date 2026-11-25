@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
+import { createQrCodeSvg } from '../src/backend/qr-code.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
 import { STATIC_DIR, STATIC_PATH } from '../src/frontend/static-files.ts';
+import { MARCADOR_CODIGO } from '../src/frontend/static/logic.js';
 
 const BASE_URL = 'https://encurta.do/';
 const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:')), BASE_URL);
@@ -67,6 +69,37 @@ test('devolve 404 para código ou rota inexistente', async () => {
     assert.equal((await fetch(`${apiUrl}/a/b`)).status, 404);
 });
 
+const qrCodeUrl = (code: string) => apiUrl + QRCODE_PATH.replace(CODE_PARAM, code);
+
+test('devolve o QR Code em SVG que codifica o link curto', async () => {
+    const { code, shortUrl } = await (await post(JSON.stringify({ url: 'https://example.com/qr' }))).json();
+    const res = await fetch(qrCodeUrl(code));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/svg+xml');
+
+    const svg = await res.text();
+    assert.match(svg, /^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    assert.equal(svg, createQrCodeSvg(shortUrl));
+    assert.notEqual(svg, createQrCodeSvg(BASE_URL + 'outro'));
+});
+
+test('devolve 404 para QR Code de código inexistente ou inválido', async () => {
+    for (const code of ['naoexiste', 'a.b', 'a%2Fb', 'x'.repeat(65)]) {
+        assert.equal((await fetch(qrCodeUrl(code))).status, 404, code);
+    }
+});
+
+test('responde HEAD na rota do QR Code', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/qr-head' }))).json();
+    const res = await fetch(qrCodeUrl(code), { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/svg+xml');
+});
+
+test('o marcador do código no frontend é o mesmo da rota do backend', () => {
+    assert.equal(MARCADOR_CODIGO, CODE_PARAM);
+});
+
 test('responde ao preflight de CORS', async () => {
     const res = await fetch(apiUrl + SHORTEN_PATH, { method: 'OPTIONS' });
     assert.equal(res.status, 204);
@@ -78,7 +111,7 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     assert.equal(res.status, 200);
 
     const spec = await res.json();
-    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, '/{code}']);
+    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, '/{code}']);
     assert.equal(spec.servers[0].url, BASE_URL);
 });
 
@@ -107,6 +140,13 @@ test('a interface web tem botão para copiar o link curto', async () => {
 
     const js = await (await fetch(`${apiUrl}${STATIC_PATH}main.js`)).text();
     assert.match(js, /navigator\.clipboard\.writeText\(/);
+});
+
+test('a interface web tem o QR Code e o link para baixá-lo', async () => {
+    const html = await (await fetch(`${apiUrl}/`)).text();
+    assert.match(html, new RegExp(`data-qrcode="${QRCODE_PATH}"`));
+    assert.match(html, /<img [^>]*id="qrcode"/);
+    assert.match(html, /<a (?=[^>]*id="baixar")(?=[^>]*\bdownload\b)[^>]*>/);
 });
 
 test('serve todos os arquivos JS da interface, em GET e HEAD', async () => {

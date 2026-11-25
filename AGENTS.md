@@ -11,6 +11,7 @@ Encurtador de URLs: recebe uma URL longa, gera um código curto e redireciona qu
 - TypeScript (modo `strict`) rodando em Node.js (versão LTS atual).
 - Gerenciador de pacotes: npm.
 - Banco de dados: SQLite, pelo módulo nativo `node:sqlite` (sem dependência externa).
+- QR Code: [`qrcode-generator`](https://www.npmjs.com/package/qrcode-generator) (sem dependências, com tipos próprios), usado só em `src/backend/qr-code.ts`.
 - O Node executa os arquivos `.ts` direto; o `tsc` só checa tipos e gera o build em `dist/`.
 - Não adicione dependências para resolver o que a biblioteca padrão do Node já resolve em poucas linhas.
 
@@ -51,6 +52,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | `POST` | `/api/urls` | Corpo `{"url": "https://..."}`. Devolve `201` com `{"code", "shortUrl"}`. |
+| `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), ou `404`. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. |

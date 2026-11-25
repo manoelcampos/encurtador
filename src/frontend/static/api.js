@@ -13,10 +13,10 @@ export class ApiError extends Error {
 }
 
 /**
- * Encurta a URL e devolve o link curto.
+ * Encurta a URL e devolve o código e o link curto.
  * @param {string} caminho rota da API que encurta URLs
  * @param {string} url
- * @returns {Promise<string>}
+ * @returns {Promise<import('./logic.js').LinkCurto>}
  */
 export async function encurtar(caminho, url) {
     const res = await fetch(caminho, {
@@ -31,5 +31,5 @@ export async function encurtar(caminho, url) {
         throw new ApiError(mensagemDaApi(dados), res.status);
     }
 
-    return dados.shortUrl;
+    return { code: dados.code, shortUrl: dados.shortUrl };
 }
