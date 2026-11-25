@@ -43,6 +43,36 @@ test('gera outro código quando há colisão', async () => {
     assert.equal(await service.resolve('a'), 'https://um.com/');
 });
 
+test('sem apelido continua gerando o código', async () => {
+    const service = createService({ generateCode: sequence('Gerado') });
+    assert.equal(await service.shorten('https://um.com', undefined), 'Gerado');
+});
+
+test('apelido é gravado em minúsculas e os cliques e estatísticas vão para ele', async () => {
+    const service = createService({ generateCode: () => assert.fail('não deve gerar código') });
+    assert.equal(await service.shorten('https://um.com', 'Promo'), 'promo');
+    assert.equal(await service.visit('PROMO'), 'https://um.com/');
+    assert.equal((await service.stats('Promo'))?.code, 'promo');
+    assert.equal((await service.stats('promo'))?.totalClicks, 1);
+});
+
+test('código gerado diferencia maiúsculas e não cai no apelido em minúsculas por engano', async () => {
+    const service = createService({ generateCode: sequence('AbcDef') });
+    await service.shorten('https://gerado.com');
+    await service.shorten('https://apelido.com', 'abcdef');
+    assert.equal(await service.resolve('AbcDef'), 'https://gerado.com/');
+    assert.equal(await service.resolve('ABCDEF'), 'https://apelido.com/');
+});
+
+test('apelido em uso lança ALIAS_TAKEN; formato inválido lança INVALID_ALIAS antes de consultar o provedor externo', async () => {
+    const checked: string[] = [];
+    const service = createService({ threatChecker: fakeChecker(checked) });
+    await service.shorten('https://um.com', 'promo');
+    await rejectsWith(service.shorten('https://dois.com', 'promo'), UrlErrorCode.ALIAS_TAKEN);
+    await rejectsWith(service.shorten('https://tres.com', 'x'), UrlErrorCode.INVALID_ALIAS);
+    assert.deepEqual(checked, ['https://um.com/', 'https://dois.com/']);
+});
+
 test('falha após muitas colisões seguidas', async () => {
     const service = createService({ generateCode: () => 'sempre' });
     await service.shorten('https://um.com');

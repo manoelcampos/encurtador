@@ -43,7 +43,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `logic.js`: regras sem DOM, testadas com `node --test`.
     - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
-    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400` e `429`, o frontend mostra a mensagem traduzida.
+    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409` e `429`, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
 - `test/`: testes automatizados.
 
@@ -53,7 +53,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/api/urls` | Corpo `{"url": "https://..."}`. Devolve `201` com `{"code", "shortUrl"}`. |
+| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional"}`. Devolve `201` com `{"code", "shortUrl"}`. Veja "Apelidos". |
 | `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), ou `404`. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
@@ -72,9 +72,17 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - `totalClicks` conta todo o período. `clicksByDay` mostra só os últimos `STATS_DAYS` (30) dias em UTC, contando hoje, em ordem de data, e omite os dias sem cliques.
 - A data vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas. O `ClickRepository` é injetado pela opção `clicks`; sem ela, nenhum clique é registrado (`NO_CLICK_REPOSITORY`).
 
+### Apelidos
+
+- O campo opcional `alias` do `POST /api/urls` vira o código do link (ex.: `/promo-natal`). Sem ele, o código é gerado.
+- Formato (`ALIAS_PATTERN` em `alias-validator.ts`): de `ALIAS_MIN_LENGTH` (3) a `ALIAS_MAX_LENGTH` (50) letras, números e hífens, sem hífen no início ou no fim. Cabe no `CODE_PATTERN` da rota `/:code` (há teste).
+- Não diferencia maiúsculas: o apelido é gravado em minúsculas, para `Promo` e `promo` não virarem links diferentes. Os códigos gerados continuam diferenciando maiúsculas; por isso, `/:code`, `/qrcode` e `/stats` buscam primeiro o código exato e, só se não acharem e o código em minúsculas tiver formato de apelido, buscam em minúsculas. Cliques e estatísticas vão para o código gravado.
+- Palavras reservadas (`RESERVED_ALIASES`): o primeiro segmento de cada rota da aplicação (derivado de `api-paths.ts` e `static-files.ts`, ex.: `api` e `static`) e alguns nomes que confundiriam quem recebe o link (`admin`, `www` etc.).
+- Apelido em uso ou reservado: `409` com `code` `ALIAS_TAKEN` (reservado é tratado como "já usado pela aplicação"). Formato inválido: `400` com `INVALID_ALIAS`. A gravação usa o `add` do repositório, que falha se o código já existir, então dois pedidos simultâneos com o mesmo apelido dão um `201` e um `409`.
+
 ### URLs recusadas
 
-O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}`. O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
+O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409` para `ALIAS_TAKEN`). O `code` é estável e o frontend escolhe a mensagem traduzida por ele (`CHAVES_DOS_CODIGOS_DE_ERRO` em `logic.js`, em sincronia com `UrlErrorCode` do backend; há teste):
 
 | `code` | Motivo |
 |--------|--------|
@@ -82,6 +90,8 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}`. O `code
 | `PRIVATE_NETWORK` | `localhost`, `*.localhost` ou IP de loopback, privado, link-local, `0.0.0.0/8`, CGNAT, `::/96` (inclui `::`, `::1` e IPv4-compatible), NAT64 `64:ff9b::/96`, `fc00::/7`, `fe80::/10`, `fec0::/10` (inclusive IPv4 mapeado em IPv6 e formas como `2130706433`, que o `URL` normaliza). Só olha o host literal, sem resolver DNS: um domínio público que aponta para IP privado passa, o que é aceitável porque o encurtador só redireciona e nunca acessa a URL. Vem antes de `OWN_DOMAIN`, para que `http://localhost:8080` em desenvolvimento dê este código. |
 | `OWN_DOMAIN` | Mesmo host da `BASE_URL` (minúsculas, sem ponto final, qualquer porta, com ou sem `www.`). Evita loops de redirecionamento. Outros subdomínios são aceitos. |
 | `MALICIOUS_URL` | Marcada como possivelmente perigosa pelo `UrlThreatChecker` injetado no `UrlShortenerService`. |
+| `INVALID_ALIAS` | Apelido fora do formato (veja "Apelidos"). |
+| `ALIAS_TAKEN` | Apelido em uso ou reservado. Única recusa com status `409`. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.

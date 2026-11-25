@@ -1,5 +1,6 @@
 import { type ClickRepository, type DailyClicks, NO_CLICK_REPOSITORY } from '../data/click-repository.ts';
 import type { UrlRepository } from '../data/url-repository.ts';
+import { ALIAS_PATTERN, aliasTakenError, validateAlias } from './alias-validator.ts';
 import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
@@ -21,6 +22,12 @@ export interface UrlShortenerOptions {
     clicks?: ClickRepository;
     /** Relógio usado para registrar os cliques; injetável para testar datas. */
     now?: () => Date;
+}
+
+/** Link encontrado: o código como está gravado e a URL original. */
+interface StoredLink {
+    code: string;
+    url: string;
 }
 
 export interface ClickStats {
@@ -48,9 +55,16 @@ export class UrlShortenerService {
         this.#now = options.now ?? (() => new Date());
     }
 
-    /** Valida a URL, grava com um código novo e retorna o código. */
-    async shorten(input: unknown): Promise<string> {
+    /**
+     * Valida a URL, grava com o apelido (se informado) ou com um código novo e retorna o código.
+     * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.
+     */
+    async shorten(input: unknown, aliasInput?: unknown): Promise<string> {
+        const alias = validateAlias(aliasInput);
         const url = await this.#validate(input);
+        if (alias !== undefined) {
+            return this.#addAlias(alias, url);
+        }
 
         for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
             const code = this.#generateCode();
@@ -62,18 +76,42 @@ export class UrlShortenerService {
         throw new Error(`Não foi possível gerar um código único após ${MAX_CODE_ATTEMPTS} tentativas.`);
     }
 
-    resolve(code: string): Promise<string | undefined> {
-        return this.#repository.find(code);
+    /** O `add` falha se o código já existir, então não há corrida entre checar e gravar. */
+    async #addAlias(alias: string, url: string): Promise<string> {
+        if (!await this.#repository.add(alias, url)) {
+            throw aliasTakenError();
+        }
+
+        return alias;
+    }
+
+    async resolve(code: string): Promise<string | undefined> {
+        return (await this.#find(code))?.url;
+    }
+
+    /**
+     * Busca o código exato (os gerados diferenciam maiúsculas) e, se não achar e ele tiver formato de apelido
+     * depois de passar para minúsculas, busca em minúsculas, pois os apelidos são gravados assim.
+     */
+    async #find(code: string): Promise<StoredLink | undefined> {
+        const url = await this.#repository.find(code);
+        if (url) {
+            return { code, url };
+        }
+
+        const lower = code.toLowerCase();
+        const aliasUrl = lower !== code && ALIAS_PATTERN.test(lower) ? await this.#repository.find(lower) : undefined;
+        return aliasUrl ? { code: lower, url: aliasUrl } : undefined;
     }
 
     /** Resolve o código para redirecionar e registra o clique. Falha ao registrar não impede o redirecionamento. */
     async visit(code: string): Promise<string | undefined> {
-        const url = await this.resolve(code);
-        if (url) {
-            await this.#recordClick(code);
+        const link = await this.#find(code);
+        if (link) {
+            await this.#recordClick(link.code);
         }
 
-        return url;
+        return link?.url;
     }
 
     async #recordClick(code: string) {
@@ -85,8 +123,9 @@ export class UrlShortenerService {
     }
 
     /** Estatísticas de cliques do código, ou undefined se ele não existir. */
-    async stats(code: string): Promise<ClickStats | undefined> {
-        if (!await this.resolve(code)) {
+    async stats(requestedCode: string): Promise<ClickStats | undefined> {
+        const code = (await this.#find(requestedCode))?.code;
+        if (!code) {
             return undefined;
         }
 

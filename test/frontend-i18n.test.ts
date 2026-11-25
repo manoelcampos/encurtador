@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
+import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from '../src/backend/alias-validator.ts';
 import { HOME_PAGE_HTML } from '../src/frontend/home-page.ts';
 import { STATIC_DIR } from '../src/frontend/static-files.ts';
 import {
@@ -93,5 +94,14 @@ test('os textos usados no HTML não têm caracteres especiais de HTML', () => {
     ];
     for (const valor of textosDoHtml) {
         assert.doesNotMatch(valor, CARACTERE_ESPECIAL_DE_HTML);
+    }
+});
+
+test('a dica e a mensagem de apelido citam os mesmos limites do backend', () => {
+    for (const idioma of IDIOMAS) {
+        for (const chave of ['DICA_APELIDO', 'MENSAGEM_APELIDO_INVALIDO'] as const) {
+            const valor = TRADUCOES[idioma][chave];
+            assert.ok(valor.includes(String(ALIAS_MIN_LENGTH)) && valor.includes(String(ALIAS_MAX_LENGTH)), `${idioma} ${chave}`);
+        }
     }
 });

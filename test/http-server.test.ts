@@ -87,6 +87,42 @@ test('devolve 400 com o código do motivo para URLs recusadas', async () => {
     }
 });
 
+const postAlias = (alias: unknown, url = 'https://example.com/promo') => post(JSON.stringify({ url, alias }));
+
+test('apelido livre cria o link, que redireciona sem diferenciar maiúsculas', async () => {
+    const res = await postAlias('Promo-Natal');
+    assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal` });
+
+    for (const path of ['/promo-natal', '/PROMO-Natal']) {
+        const redirect = await fetch(apiUrl + path, { redirect: 'manual' });
+        assert.equal(redirect.status, 302, path);
+        assert.equal(redirect.headers.get('location'), 'https://example.com/promo');
+    }
+});
+
+test('apelido em uso ou reservado devolve 409 com ALIAS_TAKEN', async () => {
+    assert.equal((await postAlias('em-uso')).status, 201);
+    for (const alias of ['em-uso', 'EM-USO', 'api', 'static']) {
+        const res = await postAlias(alias, 'https://example.com/outra');
+        assert.equal(res.status, 409, alias);
+        assert.equal((await res.json()).code, UrlErrorCode.ALIAS_TAKEN);
+    }
+});
+
+test('apelido com formato inválido devolve 400 com INVALID_ALIAS', async () => {
+    for (const alias of ['ab', '-x-', 'com espaço', 'a_b', 42]) {
+        const res = await postAlias(alias);
+        assert.equal(res.status, 400, String(alias));
+        assert.equal((await res.json()).code, UrlErrorCode.INVALID_ALIAS);
+    }
+});
+
+test('dois POSTs simultâneos com o mesmo apelido: um 201 e um 409', async () => {
+    const statuses = (await Promise.all([postAlias('corrida'), postAlias('corrida')])).map(res => res.status);
+    assert.deepEqual(statuses.sort(), [201, 409]);
+});
+
 test('devolve 413 para corpo grande demais', async () => {
     assert.equal((await post('x'.repeat(20 * 1024))).status, 413);
 });

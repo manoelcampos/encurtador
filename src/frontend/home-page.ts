@@ -1,3 +1,4 @@
+import { ALIAS_MAX_LENGTH } from '../backend/alias-validator.ts';
 import { QRCODE_PATH, SHORTEN_PATH } from '../backend/api-paths.ts';
 import { STATIC_PATH } from './static-files.ts';
 import { IDIOMA_DO_HTML, IDIOMAS, TRADUCOES } from './static/messages.js';
@@ -26,6 +27,8 @@ export const HOME_PAGE_HTML = `<!doctype html>
         button, .botao { font-size: 1rem; padding: .6rem 1.2rem; border: 0; border-radius: 6px; background: #1a56db; color: #ffffff; cursor: pointer; text-decoration: none; }
         button:disabled { opacity: .7; cursor: wait; }
         input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #0b3d91; outline-offset: 2px; }
+        #campo-apelido { margin-top: .75rem; }
+        #dica-apelido { margin: .25rem 0 0; font-size: .9rem; color: #57606a; }
         #erro { color: #b42318; margin: .5rem 0 0; min-height: 1.5em; }
         #resultado { margin-top: 1rem; word-break: break-all; }
         a { color: #0b3d91; }
@@ -53,6 +56,14 @@ export const HOME_PAGE_HTML = `<!doctype html>
                 <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
                     placeholder="${t.EXEMPLO_URL}" data-i18n-placeholder="EXEMPLO_URL" aria-describedby="erro">
                 <button type="submit" data-i18n="BOTAO_ENCURTAR">${t.BOTAO_ENCURTAR}</button>
+            </div>
+            <div id="campo-apelido">
+                <label for="apelido" data-i18n="ROTULO_APELIDO">${t.ROTULO_APELIDO}</label>
+                <div class="row">
+                    <input id="apelido" name="alias" type="text" autocomplete="off" autocapitalize="none" spellcheck="false"
+                        maxlength="${ALIAS_MAX_LENGTH}" aria-describedby="dica-apelido erro">
+                </div>
+                <p id="dica-apelido" data-i18n="DICA_APELIDO">${t.DICA_APELIDO}</p>
             </div>
             <p id="erro" role="alert"></p>
         </form>
