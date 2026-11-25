@@ -68,3 +68,19 @@ test('serve o Swagger UI apontando para a especificação', async () => {
     assert.match(res.headers.get('content-type') ?? '', /text\/html/);
     assert.match(await res.text(), new RegExp(OPENAPI_PATH));
 });
+
+test('serve a interface web na raiz, chamando a API de encurtar', async () => {
+    const res = await fetch(`${apiUrl}/`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+
+    const html = await res.text();
+    assert.match(html, /<label for="url">/);
+    assert.match(html, new RegExp(`fetch\\('${SHORTEN_PATH}'`));
+});
+
+test('responde HEAD na raiz', async () => {
+    const res = await fetch(`${apiUrl}/`, { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+});

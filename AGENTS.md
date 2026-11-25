@@ -33,7 +33,7 @@ Antes de concluir uma tarefa, rode testes, lint e build, e corrija o que falhar.
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
 - `src/data/`: acesso a dados (interface `UrlRepository` e implementação SQLite).
-- `src/frontend/`: interface com o usuário (ainda não criada).
+- `src/frontend/`: interface web (HTML, CSS e JS em `home-page.ts`), servida pelo backend na raiz `/`. Só usa a API HTTP.
 - `test/`: testes automatizados.
 
 ## API
@@ -43,6 +43,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | `POST` | `/api/urls` | Corpo `{"url": "https://..."}`. Devolve `201` com `{"code", "shortUrl"}`. |
+| `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |

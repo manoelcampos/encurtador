@@ -3,11 +3,14 @@ import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError } from './invalid-url-error.ts';
+import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
 import type { UrlShortenerService } from './url-shortener-service.ts';
 
 const MAX_BODY_BYTES = 10 * 1024;
+const HOME_PATH = '/';
+const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
@@ -34,8 +37,12 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return sendJson(res, 200, createOpenApiSpec(baseUrl));
     }
 
+    if ((req.method === 'GET' || req.method === 'HEAD') && path === HOME_PATH) {
+        return send(res, 200, HTML_HEADERS, HOME_PAGE_HTML);
+    }
+
     if (req.method === 'GET' && path === DOCS_PATH) {
-        return send(res, 200, { 'Content-Type': 'text/html; charset=utf-8' }, SWAGGER_UI_HTML);
+        return send(res, 200, HTML_HEADERS, SWAGGER_UI_HTML);
     }
 
     if (req.method === 'POST' && path === SHORTEN_PATH) {
