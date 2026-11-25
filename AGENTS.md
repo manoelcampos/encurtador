@@ -55,7 +55,7 @@ API pública e aberta, sem contas, com CORS liberado para qualquer origem (inclu
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional"}`. Devolve `201` com `{"code", "shortUrl", "expiresAt", "manageToken"}`. Veja "Apelidos", "Prazo de validade" e "Token de gestão". |
+| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional", "removeTracking": false}`. Devolve `201` com `{"code", "shortUrl", "url", "expiresAt", "manageToken"}` (`url` é o destino gravado). Veja "Apelidos", "Prazo de validade", "Parâmetros de rastreamento" e "Token de gestão". |
 | `DELETE` | `/api/urls/{code}` | Apaga o link e os cliques com o header `Authorization: Bearer <manageToken>`. `204`, `401`, `403` ou `404`. Veja "Token de gestão". |
 | `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), `404`, ou `410` se o link expirou. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
@@ -93,6 +93,14 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - A partir de `expires_at`, `GET`/`HEAD /:code` e o QR Code respondem `410 Gone` com `{"error", "code": "LINK_EXPIRED"}`, e nenhum clique é contado. `/stats` continua funcionando, para o dono ver os números depois do prazo.
 - O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado automaticamente. Só o dono, com o token de gestão, pode apagá-lo e liberar o apelido.
 - O `<select>` "Validade" da interface é montado em `home-page.ts` com as chaves de `EXPIRATION_OPTIONS`; cada opção tem a tradução `VALIDADE_<VALOR>` (há teste). A data de expiração aparece abaixo do link curto, formatada no idioma atual com `Intl.DateTimeFormat`.
+
+### Parâmetros de rastreamento
+
+- O campo opcional `removeTracking` do `POST /api/urls` (boolean, padrão `false` para não mudar o comportamento de quem já usa a API) remove da URL os parâmetros de rastreamento antes de gravar. Outro tipo (inclusive `"true"`) dá `400` com `INVALID_REMOVE_TRACKING`; `null` vale como ausente.
+- A lista fica só em `tracking-params.ts`: prefixos (`TRACKING_PARAM_PREFIXES`, ex.: `utm_`) e nomes exatos (`TRACKING_PARAM_NAMES`, ex.: `fbclid`, `gclid`, `msclkid`, `_hsenc`). A comparação não diferencia maiúsculas. Só entram parâmetros que não mudam o conteúdo da página.
+- `removeTrackingParams` mantém os outros parâmetros na mesma ordem e com o texto original (a query é remontada a partir dos pares crus, pois o `URLSearchParams` trocaria `%20` por `+`), mantém o fragmento e não deixa `?` sobrando.
+- Ordem: a limpeza vem logo depois da checagem de formato e tamanho de `validateUrl` (ela só encurta a URL) e antes de `PRIVATE_NETWORK`, `OWN_DOMAIN` e do `UrlThreatChecker`, que veem a URL gravada.
+- A resposta traz `url`, o destino gravado. A interface tem a opção "Remover parâmetros de rastreamento", marcada por padrão, e mostra o destino gravado quando ele difere da URL digitada (`destinoAlterado` em `logic.js`).
 
 ### Pré-visualização
 
@@ -132,6 +140,7 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `ALIAS_TAKEN` | Apelido em uso (ignorando maiúsculas) ou reservado. Status `409`. |
 | `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
 | `INVALID_EXPIRATION` | `expiresIn` fora da lista aceita (veja "Prazo de validade"). |
+| `INVALID_REMOVE_TRACKING` | `removeTracking` que não é boolean (veja "Parâmetros de rastreamento"). |
 | `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code`, de `/:code+` e do QR Code de um link expirado. |
 | `MANAGE_TOKEN_REQUIRED` | Não vem do `POST`: `DELETE` sem o header `Authorization: Bearer`. Status `401`. |
 | `INVALID_MANAGE_TOKEN` | Não vem do `POST`: `DELETE` com token errado, ou de link antigo sem token. Status `403`. |

@@ -20,17 +20,18 @@ export class ApiError extends Error {
  * @param {string} url
  * @param {string} [apelido] apelido opcional; vazio gera um código
  * @param {string} [validade] prazo de validade opcional (`expiresIn`); vazio é sem prazo
+ * @param {boolean} [removerRastreamento] remove os parâmetros de rastreamento antes de gravar
  * @returns {Promise<import('./logic.js').LinkCurto>}
  */
-export async function encurtar(caminho, url, apelido = '', validade = '') {
+export async function encurtar(caminho, url, apelido = '', validade = '', removerRastreamento = false) {
     const res = await fetch(caminho, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(corpoDoPedido(url, apelido, validade)),
+        body: JSON.stringify(corpoDoPedido(url, apelido, validade, removerRastreamento)),
     });
 
     const dados = await lerResposta(res);
-    return { code: dados.code, shortUrl: dados.shortUrl, expiresAt: dados.expiresAt ?? null, manageToken: dados.manageToken };
+    return { code: dados.code, shortUrl: dados.shortUrl, url: dados.url, expiresAt: dados.expiresAt ?? null, manageToken: dados.manageToken };
 }
 
 /**

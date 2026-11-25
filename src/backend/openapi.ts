@@ -57,7 +57,8 @@ export function createOpenApiSpec(baseUrl: string) {
                         },
                         400: {
                             description: 'JSON ou URL inválidos, URL recusada (próprio encurtador, rede local ou maliciosa) '
-                                + 'apelido fora do formato ou prazo de validade inválido. Quando a URL, o apelido ou o prazo são recusados, '
+                                + 'apelido fora do formato, prazo de validade inválido ou `removeTracking` que não é boolean. '
+                                + 'Quando a URL, o apelido, o prazo ou o `removeTracking` são recusados, '
                                 + '`code` diz o motivo.',
                             content: { 'application/json': { schema: { $ref: '#/components/schemas/UrlError' } } },
                         },
@@ -184,6 +185,13 @@ export function createOpenApiSpec(baseUrl: string) {
                             enum: Object.keys(EXPIRATION_OPTIONS),
                             example: '7d',
                         },
+                        removeTracking: {
+                            type: ['boolean', 'null'],
+                            description: 'Com true, remove os parâmetros de rastreamento (`utm_*`, `fbclid`, `gclid` etc.) antes de gravar. '
+                                + 'Os outros parâmetros e o fragmento ficam como estão. Padrão: false.',
+                            default: false,
+                            example: true,
+                        },
                     },
                 },
                 ShortenResponse: {
@@ -191,6 +199,12 @@ export function createOpenApiSpec(baseUrl: string) {
                     properties: {
                         code: { type: 'string', example: 'AbC234xYz' },
                         shortUrl: { type: 'string', format: 'uri', example: `${baseUrl}AbC234xYz` },
+                        url: {
+                            type: 'string',
+                            format: 'uri',
+                            description: 'URL de destino gravada (normalizada e, com `removeTracking`, sem parâmetros de rastreamento).',
+                            example: 'https://example.com/pagina?id=1',
+                        },
                         expiresAt: {
                             type: ['string', 'null'],
                             format: 'date-time',

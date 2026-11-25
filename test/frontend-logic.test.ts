@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink,
-    CAMPO, campoInvalido, corpoDoPedido, textoDaExpiracao,
+    CAMPO, campoInvalido, corpoDoPedido, destinoAlterado, textoDaExpiracao,
 } from '../src/frontend/static/logic.js';
 import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
 
@@ -100,6 +100,23 @@ test('só envia a validade quando escolhida', () => {
     assert.deepEqual(corpoDoPedido('https://a.com', '', ''), { url: 'https://a.com' });
     assert.deepEqual(corpoDoPedido('https://a.com', '', '7d'), { url: 'https://a.com', expiresIn: '7d' });
     assert.deepEqual(corpoDoPedido('https://a.com', 'promo', '1h'), { url: 'https://a.com', alias: 'promo', expiresIn: '1h' });
+});
+
+test('só envia removeTracking quando a opção está marcada', () => {
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '', false), { url: 'https://a.com' });
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '', true), { url: 'https://a.com', removeTracking: true });
+});
+
+test('removeTracking inválido marca a opção e usa a mensagem traduzida', () => {
+    assert.equal(campoInvalido(400, 'INVALID_REMOVE_TRACKING'), CAMPO.RASTREAMENTO);
+    assert.equal(mensagemDaApi({ error: 'x', code: 'INVALID_REMOVE_TRACKING' }, 400), texto('MENSAGEM_RASTREAMENTO_INVALIDO'));
+});
+
+test('o destino só conta como alterado quando a URL gravada difere da digitada normalizada', () => {
+    assert.equal(destinoAlterado('https://a.com/?utm_source=x&id=1', 'https://a.com/?id=1'), true);
+    assert.equal(destinoAlterado('https://a.com', 'https://a.com/'), false);
+    assert.equal(destinoAlterado('https://a.com/?id=1', 'https://a.com/?id=1'), false);
+    assert.equal(destinoAlterado('não é URL', 'https://a.com/'), true);
 });
 
 test('validade inválida marca o campo de validade e usa a mensagem traduzida', () => {

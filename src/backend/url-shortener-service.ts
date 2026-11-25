@@ -5,6 +5,7 @@ import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
 import { expirationDate, isExpired } from './expiration.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { generateManageToken, hashManageToken, manageTokenMatches } from './manage-token.ts';
+import { removeTrackingParams, validateRemoveTracking } from './tracking-params.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
 import { normalizedHostname, validateDestination, validateUrl } from './url-validator.ts';
 
@@ -32,14 +33,14 @@ export interface ShortenedLink {
     expiresAt: string | null;
 }
 
-/** Link recém-criado, com o token de gestão, que só é devolvido aqui (o banco guarda só o hash). */
-export interface CreatedLink extends ShortenedLink {
-    manageToken: string;
-}
-
 /** Link encontrado: o código como está gravado, a URL original e a data de expiração. */
 export interface StoredLink extends ShortenedLink {
     url: string;
+}
+
+/** Link recém-criado, com a URL gravada e o token de gestão, que só é devolvido aqui (o banco guarda só o hash). */
+export interface CreatedLink extends StoredLink {
+    manageToken: string;
 }
 
 /** Dados gravados de um link novo, menos o código. */
@@ -78,15 +79,17 @@ export class UrlShortenerService {
      * Valida a URL, grava com o apelido (se informado) ou com um código novo e retorna o código e a expiração.
      * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.
      * `expiresInInput` é uma das EXPIRATION_OPTIONS (ou ausente, sem prazo); outro valor lança INVALID_EXPIRATION.
+     * `removeTrackingInput` true grava a URL sem parâmetros de rastreamento; outro tipo que não boolean lança INVALID_REMOVE_TRACKING.
      */
-    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown): Promise<CreatedLink> {
+    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown, removeTrackingInput?: unknown): Promise<CreatedLink> {
         const alias = validateAlias(aliasInput);
         const expiresAt = expirationDate(expiresInInput, this.#now());
-        const url = await this.#validate(input);
+        const removeTracking = validateRemoveTracking(removeTrackingInput);
+        const url = await this.#validate(input, removeTracking);
         const manageToken = generateManageToken();
         const link: NewLink = { url, expiresAt, manageTokenHash: hashManageToken(manageToken) };
         const code = alias === undefined ? await this.#addGenerated(link) : await this.#addAlias(alias, link);
-        return { code, expiresAt, manageToken };
+        return { code, url, expiresAt, manageToken };
     }
 
     async #addGenerated(link: NewLink): Promise<string> {
@@ -206,9 +209,13 @@ export class UrlShortenerService {
         };
     }
 
-    /** Retorna a URL normalizada ou lança InvalidUrlError. A consulta externa fica por último. */
-    async #validate(input: unknown): Promise<string> {
-        const url = validateUrl(input);
+    /**
+     * Retorna a URL normalizada (e sem rastreamento, se pedido) ou lança InvalidUrlError. A consulta externa fica por último.
+     * A limpeza vem logo depois da checagem de formato e tamanho (ela só encurta a URL), para as outras regras valerem para a URL gravada.
+     */
+    async #validate(input: unknown, removeTracking: boolean): Promise<string> {
+        const validUrl = validateUrl(input);
+        const url = removeTracking ? removeTrackingParams(new URL(validUrl)).href : validUrl;
         validateDestination(url, this.#ownHostname);
         if (await this.#threatChecker.isMalicious(url)) {
             throw new InvalidUrlError('Esta URL pode ser perigosa e não pode ser encurtada. Aviso fornecido pelo Google.', UrlErrorCode.MALICIOUS_URL);

@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { apagar, ApiError, encurtar } from './api.js';
-import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
+import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, destinoAlterado, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
 import { avisoAoEsquecer, enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from './my-links.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
@@ -27,7 +27,10 @@ const form = elemento('form', HTMLFormElement);
 const input = elemento(CAMPO.URL, HTMLInputElement);
 const apelido = elemento(CAMPO.APELIDO, HTMLInputElement);
 const validade = elemento(CAMPO.VALIDADE, HTMLSelectElement);
+const removerRastreamento = elemento(CAMPO.RASTREAMENTO, HTMLInputElement);
 const expiracao = elemento('expiracao', HTMLElement);
+const destino = elemento('destino', HTMLElement);
+const urlDestino = elemento('url-destino', HTMLElement);
 const dicaPrevia = elemento('dica-previa', HTMLElement);
 const button = exigir(form.querySelector('button'), HTMLButtonElement);
 const erro = elemento('erro', HTMLElement);
@@ -58,6 +61,7 @@ function mostrarErro(mensagem, campo) {
     link.removeAttribute('href');
     link.textContent = '';
     expiracao.hidden = true;
+    destino.hidden = true;
     dicaPrevia.hidden = true;
     acoes.hidden = true;
     redes.hidden = true;
@@ -69,8 +73,11 @@ function mostrarErro(mensagem, campo) {
     }
 }
 
-/** @param {import('./logic.js').LinkCurto} linkCurto */
-function mostrarLink(linkCurto) {
+/**
+ * @param {import('./logic.js').LinkCurto} linkCurto
+ * @param {string} urlDigitada
+ */
+function mostrarLink(linkCurto, urlDigitada) {
     linkMostrado = linkCurto;
     link.href = linkCurto.shortUrl;
     link.textContent = linkCurto.shortUrl;
@@ -79,7 +86,18 @@ function mostrarLink(linkCurto) {
     acoes.hidden = false;
     redes.hidden = true;
     mostrarExpiracao(linkCurto);
+    mostrarDestino(linkCurto.url, urlDigitada);
     mostrarQrCode(linkCurto);
+}
+
+/**
+ * Mostra o destino gravado só quando ele difere do digitado (ex.: rastreamento removido).
+ * @param {string} gravada
+ * @param {string} digitada
+ */
+function mostrarDestino(gravada, digitada) {
+    urlDestino.textContent = gravada;
+    destino.hidden = !destinoAlterado(digitada, gravada);
 }
 
 /** @param {import('./logic.js').LinkCurto} linkCurto */
@@ -173,20 +191,34 @@ form.addEventListener('submit', async event => {
     input.removeAttribute('aria-invalid');
     apelido.removeAttribute('aria-invalid');
     validade.removeAttribute('aria-invalid');
+    removerRastreamento.removeAttribute('aria-invalid');
     button.disabled = true;
 
+    const url = input.value.trim();
+    const linkCurto = await pedirLink(url);
+    button.disabled = false;
+    if (!linkCurto) return;
+
+    // Guarda antes de mostrar: uma falha ao mostrar não pode perder o token de gestão.
+    lembrarLink(linkCurto);
+    // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
+    apelido.value = '';
+    mostrarLink(linkCurto, url);
+});
+
+/**
+ * Só o pedido à API fica neste try, para um erro ao mostrar o link não virar "falha de conexão".
+ * @param {string} url
+ * @returns {Promise<import('./logic.js').LinkCurto | undefined>} o link criado, ou undefined se a API ou a rede falhou
+ */
+async function pedirLink(url) {
     try {
-        const linkCurto = await encurtar(caminhoApi, input.value.trim(), apelido.value.trim(), validade.value);
-        mostrarLink(linkCurto);
-        lembrarLink(linkCurto);
-        // O apelido já foi usado: deixá-lo no campo daria 409 na próxima URL.
-        apelido.value = '';
+        return await encurtar(caminhoApi, url, apelido.value.trim(), validade.value, removerRastreamento.checked);
     } catch (error) {
         mostrarErro(mensagemDeFalha(error), error instanceof ApiError ? campoInvalido(error.status, error.codigo) : undefined);
-    } finally {
-        button.disabled = false;
+        return undefined;
     }
-});
+}
 
 const secaoMeusLinks = elemento('meus-links', HTMLElement);
 const tituloMeusLinks = elemento('titulo-meus-links', HTMLElement);
