@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { languagesFromHeader } from './accept-language.ts';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
@@ -24,6 +24,7 @@ const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
 // Só nomes simples (sem barras nem "..") dentro de STATIC_DIR, o que impede path traversal.
 const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
 const routeOf = (path: string) => new RegExp(`^${path.replace(CODE_PARAM, '([^/]+)')}$`);
+const LINK_ROUTE = routeOf(LINK_PATH);
 const QRCODE_ROUTE = routeOf(QRCODE_PATH);
 const STATS_ROUTE = routeOf(STATS_PATH);
 // A página de pré-visualização não tem JS: o CSP só libera o CSS embutido e impede que ela seja embutida em outro site.
@@ -44,17 +45,28 @@ const BAD_REQUEST = 400;
 const CONFLICT = 409;
 const SERVICE_UNAVAILABLE = 503;
 const GONE = 410;
+const UNAUTHORIZED = 401;
+const FORBIDDEN = 403;
+const NO_CONTENT = 204;
 const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
     [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
     [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
     [UrlErrorCode.LINK_EXPIRED]: GONE,
+    [UrlErrorCode.MANAGE_TOKEN_REQUIRED]: UNAUTHORIZED,
+    [UrlErrorCode.INVALID_MANAGE_TOKEN]: FORBIDDEN,
 };
+// O 401 diz ao cliente qual esquema de autenticação usar.
+const ERROR_HEADERS: Readonly<Partial<Record<UrlErrorCode, Readonly<Record<string, string>>>>> = {
+    [UrlErrorCode.MANAGE_TOKEN_REQUIRED]: { 'WWW-Authenticate': 'Bearer' },
+};
+const BEARER_TOKEN = /^Bearer\s+(\S+)\s*$/i;
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    // Authorization leva o token de gestão no DELETE.
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     // Sem isso, o navegador esconde o Retry-After do JavaScript de outras origens.
     'Access-Control-Expose-Headers': 'Retry-After',
 };
@@ -100,6 +112,11 @@ async function handleRequest(
         return shorten(service, baseUrl, req, res);
     }
 
+    const linkCode = path.match(LINK_ROUTE)?.[1];
+    if (req.method === 'DELETE' && linkCode && CODE_PATTERN.test(linkCode)) {
+        return deleteLink(service, linkCode, req, res);
+    }
+
     const qrCode = path.match(QRCODE_ROUTE)?.[1];
     if (isRead && qrCode && CODE_PATTERN.test(qrCode)) {
         return sendQrCode(service, baseUrl, qrCode, res);
@@ -139,9 +156,21 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const { code, expiresAt } = await service.shorten(body?.url, body?.alias, body?.expiresIn);
-    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), expiresAt });
+    const { code, expiresAt, manageToken } = await service.shorten(body?.url, body?.alias, body?.expiresIn);
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), expiresAt, manageToken });
 }
+
+/** Apaga o link com o token de gestão do header `Authorization: Bearer <token>`. */
+async function deleteLink(service: UrlShortenerService, code: string, req: IncomingMessage, res: ServerResponse) {
+    if (!await service.delete(code, bearerToken(req.headers.authorization))) {
+        throw new HttpError(404, CODE_NOT_FOUND_MESSAGE);
+    }
+
+    send(res, NO_CONTENT);
+}
+
+/** Token do header `Authorization: Bearer <token>`, ou undefined se o header faltar ou tiver outro formato. */
+const bearerToken = (header: string | undefined) => header?.match(BEARER_TOKEN)?.[1];
 
 /** Link expirado responde 410 (LINK_EXPIRED): o QR Code levaria a um link que não abre mais. */
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
@@ -225,7 +254,7 @@ function sendError(res: ServerResponse, error: unknown) {
 
     if (error instanceof InvalidUrlError) {
         const status = ERROR_STATUS[error.code] ?? BAD_REQUEST;
-        return sendJson(res, status, { error: error.message, code: error.code });
+        return sendJson(res, status, { error: error.message, code: error.code }, ERROR_HEADERS[error.code]);
     }
 
     console.error(error);

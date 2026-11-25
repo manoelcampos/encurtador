@@ -23,8 +23,11 @@ const CREATE_CLICKS_DAILY_TABLE = `
         PRIMARY KEY (code, date)
     )`;
 
-// Bancos de versões anteriores não têm esta coluna; ela é adicionada ao abrir (migração idempotente).
+// Bancos de versões anteriores não têm estas colunas; elas são adicionadas ao abrir (migração idempotente).
 const EXPIRES_AT_COLUMN = 'expires_at';
+// Só o hash do token de gestão: quem lê o banco não consegue apagar links. Links antigos ficam com NULL.
+const MANAGE_TOKEN_HASH_COLUMN = 'manage_token_hash';
+const ADDED_COLUMNS = { [EXPIRES_AT_COLUMN]: 'TEXT NULL', [MANAGE_TOKEN_HASH_COLUMN]: 'TEXT NULL' };
 
 /**
  * Repositório de URLs e de cliques gravado em SQLite. Use ':memory:' como caminho para um banco temporário.
@@ -42,7 +45,7 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         this.#db.exec('PRAGMA synchronous = NORMAL');
         this.#db.exec('PRAGMA foreign_keys = ON');
         this.#db.exec(CREATE_URLS_TABLE);
-        this.#addExpiresAtColumn();
+        this.#addMissingColumns();
         this.#db.exec(CREATE_CLICKS_DAILY_TABLE);
         this.uniqueIgnoringCase = this.#createCodeNocaseIndex();
     }
@@ -58,21 +61,42 @@ export class SqliteUrlRepository implements UrlRepository, ClickRepository {
         }
     }
 
-    /** Bancos novos e antigos ganham a coluna aqui, para a definição dela ficar num lugar só. */
-    #addExpiresAtColumn() {
-        const columns = this.#db.prepare('PRAGMA table_info(urls)').all();
-        if (!columns.some(column => column.name === EXPIRES_AT_COLUMN)) {
-            this.#db.exec(`ALTER TABLE urls ADD COLUMN ${EXPIRES_AT_COLUMN} TEXT NULL`);
+    /** Bancos novos e antigos ganham as colunas aqui, para a definição delas ficar num lugar só. */
+    #addMissingColumns() {
+        const existing = new Set(this.#db.prepare('PRAGMA table_info(urls)').all().map(column => column.name));
+        for (const [name, definition] of Object.entries(ADDED_COLUMNS)) {
+            if (!existing.has(name)) {
+                this.#db.exec(`ALTER TABLE urls ADD COLUMN ${name} ${definition}`);
+            }
         }
     }
 
-    async add(code: string, url: string, expiresAt: string | null = null): Promise<boolean> {
+    async add(code: string, url: string, expiresAt: string | null = null, manageTokenHash: string | null = null): Promise<boolean> {
         // DO NOTHING em vez de checar antes evita condição de corrida entre a checagem e a gravação.
         // Sem alvo, vale para a chave primária e para o índice que ignora maiúsculas.
         const result = this.#db
-            .prepare(`INSERT INTO urls (code, url, ${EXPIRES_AT_COLUMN}) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`)
-            .run(code, url, expiresAt);
+            .prepare(`INSERT INTO urls (code, url, ${EXPIRES_AT_COLUMN}, ${MANAGE_TOKEN_HASH_COLUMN}) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`)
+            .run(code, url, expiresAt, manageTokenHash);
         return result.changes === 1;
+    }
+
+    async findManageTokenHash(code: string): Promise<string | null | undefined> {
+        const row = this.#db.prepare(`SELECT ${MANAGE_TOKEN_HASH_COLUMN} AS hash FROM urls WHERE code = ?`).get(code);
+        return row && (row.hash === null ? null : String(row.hash));
+    }
+
+    /** Apaga os cliques antes do link, por causa da chave estrangeira (que não tem ON DELETE CASCADE em bancos existentes). */
+    async delete(code: string): Promise<boolean> {
+        this.#db.exec('BEGIN');
+        try {
+            this.#db.prepare('DELETE FROM clicks_daily WHERE code = ?').run(code);
+            const { changes } = this.#db.prepare('DELETE FROM urls WHERE code = ?').run(code);
+            this.#db.exec('COMMIT');
+            return changes === 1;
+        } catch (error) {
+            this.#db.exec('ROLLBACK');
+            throw error;
+        }
     }
 
     async find(code: string): Promise<StoredUrl | undefined> {

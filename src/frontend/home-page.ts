@@ -1,5 +1,5 @@
 import { ALIAS_MAX_LENGTH } from '../backend/alias-validator.ts';
-import { QRCODE_PATH, SHORTEN_PATH } from '../backend/api-paths.ts';
+import { LINK_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../backend/api-paths.ts';
 import { EXPIRATION_OPTIONS } from '../backend/expiration.ts';
 import { STATIC_PATH } from './static-files.ts';
 import { chaveDaValidade } from './static/logic.js';
@@ -53,6 +53,11 @@ export const HOME_PAGE_HTML = `<!doctype html>
         #seletor-idioma label { margin: 0; }
         select { font-size: 1rem; padding: .3rem; }
         select:focus-visible { outline: 3px solid #0b3d91; outline-offset: 2px; }
+        #meus-links { margin-top: 2rem; border-top: 1px solid #d0d7de; }
+        #lista-meus-links { list-style: none; margin: 0; padding: 0; }
+        #lista-meus-links > li { padding: .75rem 0; border-bottom: 1px solid #d0d7de; word-break: break-all; }
+        #lista-meus-links .row { align-items: center; margin-top: .25rem; }
+        #dica-meus-links, #meus-links-vazio { color: #57606a; font-size: .9rem; }
     </style>
 </head>
 <body>
@@ -96,6 +101,14 @@ export const HOME_PAGE_HTML = `<!doctype html>
         </div>
         <ul id="redes" class="row" aria-label="${t.ROTULO_OPCOES_COMPARTILHAMENTO}" data-i18n-aria-label="ROTULO_OPCOES_COMPARTILHAMENTO" hidden></ul>
         <p id="aviso" role="status"></p>
+        <section id="meus-links" aria-labelledby="titulo-meus-links"
+            data-link="${LINK_PATH}" data-stats="${STATS_PATH}" data-previa="${PREVIEW_SUFFIX}">
+            <h2 id="titulo-meus-links" tabindex="-1" data-i18n="TITULO_MEUS_LINKS">${t.TITULO_MEUS_LINKS}</h2>
+            <p id="dica-meus-links" data-i18n="AVISO_MEUS_LINKS">${t.AVISO_MEUS_LINKS}</p>
+            <p id="meus-links-vazio" data-i18n="MEUS_LINKS_VAZIO">${t.MEUS_LINKS_VAZIO}</p>
+            <ul id="lista-meus-links"></ul>
+            <p id="aviso-meus-links" role="status"></p>
+        </section>
     </main>
     <script type="module" src="${STATIC_PATH}main.js"></script>
 </body>

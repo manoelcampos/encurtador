@@ -1,5 +1,5 @@
 // Cliente da API HTTP do backend.
-import { campoTexto, corpoDoPedido, mensagemDaApi } from './logic.js';
+import { campoTexto, corpoDoPedido, MARCADOR_CODIGO, mensagemDaApi } from './logic.js';
 
 export class ApiError extends Error {
     /**
@@ -29,6 +29,28 @@ export async function encurtar(caminho, url, apelido = '', validade = '') {
         body: JSON.stringify(corpoDoPedido(url, apelido, validade)),
     });
 
+    const dados = await lerResposta(res);
+    return { code: dados.code, shortUrl: dados.shortUrl, expiresAt: dados.expiresAt ?? null, manageToken: dados.manageToken };
+}
+
+/**
+ * Apaga o link na API com o token de gestão. Lança ApiError se a API recusar (ex.: 404 se já foi apagado).
+ * @param {string} rotaDoLink rota da API do link, com o marcador do código
+ * @param {Pick<import('./logic.js').LinkCurto, 'code' | 'manageToken'>} link
+ */
+export async function apagar(rotaDoLink, { code, manageToken }) {
+    const res = await fetch(rotaDoLink.replace(MARCADOR_CODIGO, encodeURIComponent(code)), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${manageToken}` },
+    });
+    if (!res.ok) await lerResposta(res);
+}
+
+/**
+ * Corpo JSON da resposta, ou lança ApiError se ela for de erro.
+ * @param {Response} res
+ */
+async function lerResposta(res) {
     // Um proxy pode devolver HTML (ex.: 502); nesse caso usa a mensagem padrão.
     const dados = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -36,5 +58,5 @@ export async function encurtar(caminho, url, apelido = '', validade = '') {
         throw new ApiError(mensagem, res.status, campoTexto(dados, 'code'));
     }
 
-    return { code: dados.code, shortUrl: dados.shortUrl, expiresAt: dados.expiresAt ?? null };
+    return dados;
 }

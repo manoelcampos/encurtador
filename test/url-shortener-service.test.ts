@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { InvalidUrlError, UrlErrorCode } from '../src/backend/invalid-url-error.ts';
+import { hashManageToken } from '../src/backend/manage-token.ts';
 import { STATS_DAYS, UrlShortenerService, type UrlShortenerOptions } from '../src/backend/url-shortener-service.ts';
 import type { UrlThreatChecker } from '../src/backend/url-threat-checker.ts';
 import { NO_CLICK_REPOSITORY } from '../src/data/click-repository.ts';
@@ -255,4 +256,33 @@ test('prazo fora da lista lança INVALID_EXPIRATION antes de consultar o provedo
     }
 
     assert.deepEqual(checked, []);
+});
+
+test('a criação devolve um token de gestão forte e o banco guarda só o hash dele', async () => {
+    const repository = new SqliteUrlRepository(':memory:');
+    const service = new UrlShortenerService(repository, BASE_URL);
+    const { code, manageToken } = await service.shorten('https://example.com/');
+    const other = await service.shorten('https://example.com/');
+
+    assert.match(manageToken, /^[\w-]{43,}$/);
+    assert.notEqual(other.manageToken, manageToken);
+    assert.equal(await repository.findManageTokenHash(code), hashManageToken(manageToken));
+});
+
+test('delete apaga o link só com o token certo, e o apelido fica livre', async () => {
+    const service = createService();
+    const { code, manageToken } = await service.shorten('https://um.com', 'promo');
+
+    await rejectsWith(service.delete(code, undefined), UrlErrorCode.MANAGE_TOKEN_REQUIRED);
+    await rejectsWith(service.delete(code, 'errado'), UrlErrorCode.INVALID_MANAGE_TOKEN);
+    assert.equal(await service.delete('naoexiste', manageToken), false);
+    assert.equal(await service.delete('PROMO', manageToken), true);
+    assert.equal(await service.find(code), undefined);
+    assert.equal((await service.shorten('https://dois.com', 'promo')).code, 'promo');
+});
+
+test('delete recusa link antigo, criado sem token', async () => {
+    const repository = new SqliteUrlRepository(':memory:');
+    await repository.add('antigo', 'https://example.com/');
+    await rejectsWith(new UrlShortenerService(repository, BASE_URL).delete('antigo', 'qualquer'), UrlErrorCode.INVALID_MANAGE_TOKEN);
 });

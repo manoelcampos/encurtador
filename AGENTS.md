@@ -34,27 +34,29 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 ## Estrutura
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
-- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste). Colunas novas em tabelas existentes (como `urls.expires_at`) são adicionadas ao abrir, com `ALTER TABLE ... ADD COLUMN` só se o `PRAGMA table_info` mostrar que faltam (migração idempotente; há teste com o esquema anterior).
+- `src/data/`: acesso a dados (interfaces `UrlRepository` e `ClickRepository`, as duas implementadas por `SqliteUrlRepository`, que divide a conexão entre as tabelas `urls` e `clicks_daily`; o `main.ts` injeta a mesma instância nas duas dependências do `UrlShortenerService`). Um índice único com `COLLATE NOCASE` impede dois códigos iguais ignorando maiúsculas (veja "Apelidos"). O banco usa `journal_mode = WAL` e `synchronous = NORMAL`, para leituras não esperarem gravações e cada clique não esperar um `fsync`. As tabelas são criadas com `CREATE TABLE IF NOT EXISTS`, então bancos de versões anteriores ganham as tabelas novas ao abrir (há teste). Colunas novas em tabelas existentes (como `urls.expires_at` e `urls.manage_token_hash`) são adicionadas ao abrir, com `ALTER TABLE ... ADD COLUMN` só se o `PRAGMA table_info` mostrar que faltam (migração idempotente; há teste com o esquema anterior).
 - `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
   - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
   - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
     - `main.js`: só a ligação com o DOM; mantenha-o fino.
     - `api.js`: chamadas à API HTTP.
     - `logic.js`: regras sem DOM, testadas com `node --test`.
+    - `my-links.js`: lista "Meus links" (links criados neste navegador, com o token de gestão) guardada no `localStorage`, com o armazenamento injetado; sem DOM e testada. Veja "Token de gestão".
     - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
-    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409`, `429` e o `503` de `ALIAS_UNAVAILABLE`, o frontend mostra a mensagem traduzida.
+    - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409`, `429`, o `503` de `ALIAS_UNAVAILABLE` e os `401`/`403` do token de gestão, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
   - `preview-page.ts`: HTML da página de pré-visualização (`/{code}+`), montado pelo servidor e sem JS. Veja "Pré-visualização".
 - `test/`: testes automatizados.
 
 ## API
 
-API pública e aberta, sem autenticação, com CORS liberado para qualquer origem.
+API pública e aberta, sem contas, com CORS liberado para qualquer origem (inclusive `DELETE` e o header `Authorization`). Só apagar um link exige o token de gestão (veja "Token de gestão").
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional"}`. Devolve `201` com `{"code", "shortUrl", "expiresAt"}`. Veja "Apelidos" e "Prazo de validade". |
+| `POST` | `/api/urls` | Corpo `{"url": "https://...", "alias": "opcional", "expiresIn": "opcional"}`. Devolve `201` com `{"code", "shortUrl", "expiresAt", "manageToken"}`. Veja "Apelidos", "Prazo de validade" e "Token de gestão". |
+| `DELETE` | `/api/urls/{code}` | Apaga o link e os cliques com o header `Authorization: Bearer <manageToken>`. `204`, `401`, `403` ou `404`. Veja "Token de gestão". |
 | `GET`, `HEAD` | `/api/urls/{code}/qrcode` | QR Code do link curto em SVG (`image/svg+xml`), `404`, ou `410` se o link expirou. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
@@ -89,7 +91,7 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - O campo opcional `expiresIn` do `POST /api/urls` aceita só os valores de `EXPIRATION_OPTIONS` em `expiration.ts` (`1h`, `1d`, `7d`, `30d`). Uma lista fixa evita problemas de fuso e datas absurdas; por isso não há campo com data absoluta. Outro valor (inclusive texto vazio) dá `400` com `INVALID_EXPIRATION`. Sem o campo (ou `null`), o link não expira.
 - O prazo é convertido em `expires_at` (ISO 8601 em UTC, coluna `TEXT NULL` em `urls`) pelo relógio injetado no `UrlShortenerService` (opção `now`). A resposta traz `expiresAt` (ou `null`).
 - A partir de `expires_at`, `GET`/`HEAD /:code` e o QR Code respondem `410 Gone` com `{"error", "code": "LINK_EXPIRED"}`, e nenhum clique é contado. `/stats` continua funcionando, para o dono ver os números depois do prazo.
-- O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado.
+- O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado automaticamente. Só o dono, com o token de gestão, pode apagá-lo e liberar o apelido.
 - O `<select>` "Validade" da interface é montado em `home-page.ts` com as chaves de `EXPIRATION_OPTIONS`; cada opção tem a tradução `VALIDADE_<VALOR>` (há teste). A data de expiração aparece abaixo do link curto, formatada no idioma atual com `Intl.DateTimeFormat`.
 
 ### Pré-visualização
@@ -100,6 +102,21 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - Idioma: escolhido pelo header `Accept-Language` (`languagesFromHeader` em `accept-language.ts`, ordenado por `q`), com a mesma `escolherIdioma` do frontend e os textos dos arquivos `i18n-*.js`.
 - **Decisão:** a página não busca o título da página de destino. Fazer o servidor acessar URLs de terceiros abriria risco de SSRF (DNS que aponta para a rede interna, redirecionamentos, respostas enormes) e custo; mostrar o destino já atende ao objetivo. O encurtador continua sem nunca acessar as URLs.
 - Depois de encurtar, a página inicial mostra a dica `DICA_PREVIA` (o texto cita o `+`; há teste que confere o sufixo nos três idiomas).
+
+### Token de gestão
+
+Como não há contas, quem cria o link recebe um token secreto que permite apagá-lo (`manage-token.ts`).
+
+- Na criação, o `UrlShortenerService` gera o token com `crypto.randomBytes` (256 bits, em base64url) e o `POST` o devolve uma única vez, em `manageToken`. Não há como recuperá-lo depois.
+- O banco guarda só o hash SHA-256 do token (coluna `urls.manage_token_hash`), para quem ler o banco não conseguir apagar links. SHA-256 simples basta porque o token é aleatório e longo: não há dicionário a testar, e funções lentas (bcrypt, scrypt) só fazem sentido para senhas fracas.
+- `DELETE /api/urls/{code}` recebe o token no header padrão `Authorization: Bearer <token>`. A comparação é feita sobre os hashes, com `crypto.timingSafeEqual` (tempo constante). Respostas: `204` apagado; `401` com `MANAGE_TOKEN_REQUIRED` e `WWW-Authenticate: Bearer` se o header faltar ou não for `Bearer`; `404` se o código não existir; `403` com `INVALID_MANAGE_TOKEN` se o token não conferir.
+- **Decisão:** o `404` revela se o código existe, o que é aceitável porque os links já são públicos (o redirecionamento e `/stats` também dão `404`).
+- O código segue a mesma busca do resto (apelido sem diferenciar maiúsculas) e funciona com o link expirado.
+- Apagar remove a linha de `urls` e os cliques de `clicks_daily`, numa transação (a chave estrangeira não tem `ON DELETE CASCADE`, e mudar isso no SQLite exigiria recriar a tabela). **Decisão:** o código ou apelido fica livre para ser usado de novo.
+- Links criados antes do token têm `manage_token_hash` `NULL` e não podem ser apagados pela API (`403`).
+- O `DELETE` conta no limite de acesso (`ACCESS_RATE_LIMIT`). Tentar adivinhar tokens é inviável com 256 bits; o limite por IP só reduz o ruído.
+- `/stats` continua pública, sem token.
+- Frontend: depois de encurtar, `{code, shortUrl, manageToken, expiresAt, createdAt}` vai para o `localStorage` (`my-links.js`). A seção "Meus links" da página inicial lista esses links, do mais novo para o mais antigo, com links para as estatísticas e a pré-visualização e o botão "Apagar". O primeiro clique troca o botão por "Confirmar exclusão" e avisa pela região `role="status"`; o segundo apaga (sem `window.confirm`); sair do botão cancela. Um `404` ao apagar também tira o link da lista. Se o `localStorage` estiver bloqueado, a lista fica vazia e a página avisa que o link não foi guardado. Um texto avisa que o token fica só neste navegador e que limpar os dados do navegador perde o acesso.
 
 ### URLs recusadas
 
@@ -116,6 +133,8 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}` (ou `409
 | `ALIAS_UNAVAILABLE` | Apelidos desativados porque o banco tem códigos antigos que só diferem em maiúsculas. Status `503`. |
 | `INVALID_EXPIRATION` | `expiresIn` fora da lista aceita (veja "Prazo de validade"). |
 | `LINK_EXPIRED` | Não vem do `POST`: é a resposta `410` de `/:code`, de `/:code+` e do QR Code de um link expirado. |
+| `MANAGE_TOKEN_REQUIRED` | Não vem do `POST`: `DELETE` sem o header `Authorization: Bearer`. Status `401`. |
+| `INVALID_MANAGE_TOKEN` | Não vem do `POST`: `DELETE` com token errado, ou de link antigo sem token. Status `403`. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.
@@ -131,7 +150,7 @@ Valor inválido nestas variáveis impede a API de iniciar, com uma mensagem que 
 |----------|--------|-----------|
 | `CREATE_RATE_LIMIT` | `30` | Criações (`POST /api/urls`) por IP em cada janela. |
 | `CREATE_RATE_WINDOW_SECONDS` | `3600` | Duração da janela de criação, em segundos. |
-| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code, estatísticas etc.) por IP em cada janela. |
+| `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code, estatísticas, `DELETE` etc.) por IP em cada janela. |
 | `ACCESS_RATE_WINDOW_SECONDS` | `60` | Duração da janela de acesso, em segundos. |
 | `TRUST_PROXY` | `false` | Com `true`, o IP do cliente é o **último** valor do header `X-Forwarded-For`. Isso só serve para **um único** proxy confiável na frente da API: com dois ou mais, o último valor é o IP de um proxy, e todos os clientes dividem o mesmo limite. Só ligue se a API não puder ser acessada sem passar pelo proxy, senão qualquer cliente forja o próprio IP. Com `false`, usa o IP da conexão. |
 

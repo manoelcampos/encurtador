@@ -49,6 +49,19 @@ const es = {
     ROTULO_URL_COMPLETA: 'URL completa:',
     BOTAO_CONTINUAR: 'Continuar',
     LINK_PAGINA_INICIAL: 'Acortar otra URL',
+    TITULO_MEUS_LINKS: 'Mis enlaces',
+    AVISO_MEUS_LINKS: 'Los enlaces se guardan solo en este navegador, con la clave secreta que permite eliminarlos. '
+        + 'Si borras los datos del navegador, pierdes el acceso a ellos.',
+    MEUS_LINKS_VAZIO: 'No hay enlaces creados en este navegador.',
+    LINK_ESTATISTICAS: 'Estadísticas',
+    LINK_VER_DESTINO: 'Ver destino',
+    BOTAO_APAGAR: 'Eliminar',
+    BOTAO_CONFIRMAR_APAGAR: 'Confirmar eliminación',
+    AVISO_CONFIRMAR_APAGAR: 'Haz clic de nuevo en el botón para confirmar la eliminación del enlace.',
+    AVISO_LINK_APAGADO: 'Enlace eliminado.',
+    AVISO_FALHA_GUARDAR: 'No se pudo guardar el enlace en este navegador. No podrás eliminarlo después.',
+    MENSAGEM_TOKEN_AUSENTE: 'Falta la clave secreta del enlace.',
+    MENSAGEM_TOKEN_INVALIDO: 'La clave secreta guardada no coincide con este enlace. No se puede eliminar.',
 };
 
 export default Object.freeze(es);

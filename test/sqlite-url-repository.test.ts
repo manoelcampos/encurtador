@@ -95,3 +95,38 @@ test('recusa clique em código inexistente (chave estrangeira)', async () => {
     const repository = new SqliteUrlRepository(':memory:');
     await assert.rejects(repository.addClick('naoexiste', '2026-11-25'));
 });
+
+test('abre banco antigo sem a coluna manage_token_hash: links antigos ficam sem token e os novos gravam o hash', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'encurtador-'));
+    const path = join(dir, 'sem-token.db');
+    createOldDatabase(path);
+
+    try {
+        const repository = new SqliteUrlRepository(path);
+        assert.equal(await repository.findManageTokenHash('antigo'), null);
+        assert.equal(await repository.add('novo', 'https://novo.example/', null, 'hash'), true);
+        repository.close();
+
+        const reopened = new SqliteUrlRepository(path);
+        assert.equal(await reopened.findManageTokenHash('novo'), 'hash');
+        assert.equal(await reopened.findManageTokenHash('naoexiste'), undefined);
+        reopened.close();
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('delete apaga o link e os cliques dele, e o código fica livre', async () => {
+    const repository = new SqliteUrlRepository(':memory:');
+    await repository.add('apagar', 'https://um.com/');
+    await repository.add('manter', 'https://dois.com/');
+    await repository.addClick('apagar', '2026-11-25');
+    await repository.addClick('manter', '2026-11-25');
+
+    assert.equal(await repository.delete('apagar'), true);
+    assert.equal(await repository.find('apagar'), undefined);
+    assert.equal(await repository.countClicks('apagar'), 0);
+    assert.equal(await repository.countClicks('manter'), 1);
+    assert.equal(await repository.delete('apagar'), false);
+    assert.equal(await repository.add('apagar', 'https://tres.com/'), true);
+});

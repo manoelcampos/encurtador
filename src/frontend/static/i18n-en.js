@@ -49,6 +49,19 @@ const en = {
     ROTULO_URL_COMPLETA: 'Full URL:',
     BOTAO_CONTINUAR: 'Continue',
     LINK_PAGINA_INICIAL: 'Shorten another URL',
+    TITULO_MEUS_LINKS: 'My links',
+    AVISO_MEUS_LINKS: 'Your links are saved only in this browser, with the secret key that lets you delete them. '
+        + 'If you clear the browser data, you lose access to them.',
+    MEUS_LINKS_VAZIO: 'No links created in this browser.',
+    LINK_ESTATISTICAS: 'Statistics',
+    LINK_VER_DESTINO: 'See destination',
+    BOTAO_APAGAR: 'Delete',
+    BOTAO_CONFIRMAR_APAGAR: 'Confirm deletion',
+    AVISO_CONFIRMAR_APAGAR: 'Click the button again to confirm deleting the link.',
+    AVISO_LINK_APAGADO: 'Link deleted.',
+    AVISO_FALHA_GUARDAR: 'Could not save the link in this browser. You will not be able to delete it later.',
+    MENSAGEM_TOKEN_AUSENTE: 'The secret key of the link is missing.',
+    MENSAGEM_TOKEN_INVALIDO: 'The saved secret key does not match this link. It cannot be deleted.',
 };
 
 export default Object.freeze(en);
