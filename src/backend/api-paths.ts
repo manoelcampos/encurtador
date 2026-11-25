@@ -5,3 +5,5 @@ export const DOCS_PATH = '/api/docs';
 export const CODE_PARAM = '{code}';
 export const QRCODE_PATH = `${SHORTEN_PATH}/${CODE_PARAM}/qrcode`;
 export const STATS_PATH = `${SHORTEN_PATH}/${CODE_PARAM}/stats`;
+/** Sufixo que, depois do código (ex.: `/AbC234xYz+`), mostra o destino em vez de redirecionar. Não cabe no CODE_PATTERN. */
+export const PREVIEW_SUFFIX = '+';

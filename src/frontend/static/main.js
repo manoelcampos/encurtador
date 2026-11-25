@@ -27,6 +27,7 @@ const input = elemento(CAMPO.URL, HTMLInputElement);
 const apelido = elemento(CAMPO.APELIDO, HTMLInputElement);
 const validade = elemento(CAMPO.VALIDADE, HTMLSelectElement);
 const expiracao = elemento('expiracao', HTMLElement);
+const dicaPrevia = elemento('dica-previa', HTMLElement);
 const button = exigir(form.querySelector('button'), HTMLButtonElement);
 const erro = elemento('erro', HTMLElement);
 const rotuloLink = elemento('rotulo-link', HTMLElement);
@@ -56,6 +57,7 @@ function mostrarErro(mensagem, campo) {
     link.removeAttribute('href');
     link.textContent = '';
     expiracao.hidden = true;
+    dicaPrevia.hidden = true;
     acoes.hidden = true;
     redes.hidden = true;
     qrCode.hidden = true;
@@ -72,6 +74,7 @@ function mostrarLink(linkCurto) {
     link.href = linkCurto.shortUrl;
     link.textContent = linkCurto.shortUrl;
     rotuloLink.hidden = false;
+    dicaPrevia.hidden = false;
     acoes.hidden = false;
     redes.hidden = true;
     mostrarExpiracao(linkCurto);

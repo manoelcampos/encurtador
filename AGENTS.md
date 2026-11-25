@@ -45,6 +45,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `messages.js`: textos no idioma escolhido (`texto(chave)`) e escolha do idioma (salvo no `localStorage`, senão `navigator.languages`, senão inglês), sem DOM e testada.
     - `i18n-<idioma>.js` (`pt-BR`, `en`, `es`): um arquivo de tradução por idioma, todos com as mesmas chaves (há teste). Todo texto visível ou acessível da interface vem deles, inclusive o HTML de `home-page.ts`, que vem em pt-BR e é traduzido pelo `main.js` (atributos `data-i18n*`). Para um idioma novo, crie o arquivo e registre-o em `TRADUCOES`. As mensagens de erro da API ainda vêm só em português; para `400`, `409`, `429` e o `503` de `ALIAS_UNAVAILABLE`, o frontend mostra a mensagem traduzida.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
+  - `preview-page.ts`: HTML da página de pré-visualização (`/{code}+`), montado pelo servidor e sem JS. Veja "Pré-visualização".
 - `test/`: testes automatizados.
 
 ## API
@@ -59,6 +60,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
 | `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou. Só `GET` conta como clique. |
+| `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar e sem contar clique, `404`, ou `410` se o link expirou. Veja "Pré-visualização". |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
@@ -89,6 +91,15 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 - A partir de `expires_at`, `GET`/`HEAD /:code` e o QR Code respondem `410 Gone` com `{"error", "code": "LINK_EXPIRED"}`, e nenhum clique é contado. `/stats` continua funcionando, para o dono ver os números depois do prazo.
 - O apelido de um link expirado continua ocupado (`409`): o link não é apagado nem reaproveitado.
 - O `<select>` "Validade" da interface é montado em `home-page.ts` com as chaves de `EXPIRATION_OPTIONS`; cada opção tem a tradução `VALIDADE_<VALOR>` (há teste). A data de expiração aparece abaixo do link curto, formatada no idioma atual com `Intl.DateTimeFormat`.
+
+### Pré-visualização
+
+- O código seguido de `PREVIEW_SUFFIX` (`+`, em `api-paths.ts`), como `/AbC234xYz+`, mostra uma página com o domínio de destino em destaque, a URL completa, um link "Continuar" (`rel="noopener noreferrer"`) e um link para a página inicial. A forma codificada (`/AbC234xYz%2B`) também funciona. O `+` não cabe no `CODE_PATTERN`, então não conflita com códigos nem apelidos.
+- Usa a mesma busca do redirecionamento (`resolve`): apelido sem diferenciar maiúsculas, `404` para código inexistente e `410` (`LINK_EXPIRED`) para link expirado, em JSON como nas outras rotas. Não conta clique. `HEAD` funciona.
+- Segurança: todo valor interpolado no HTML passa por `escapeHtml`; só URLs `http`/`https` viram link (outras ficam com `href="#"`), sem confiar só na validação da criação. A resposta envia `Content-Security-Policy` sem scripts (`default-src 'none'`, só CSS embutido, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `X-Content-Type-Options: nosniff`.
+- Idioma: escolhido pelo header `Accept-Language` (`languagesFromHeader` em `accept-language.ts`, ordenado por `q`), com a mesma `escolherIdioma` do frontend e os textos dos arquivos `i18n-*.js`.
+- **Decisão:** a página não busca o título da página de destino. Fazer o servidor acessar URLs de terceiros abriria risco de SSRF (DNS que aponta para a rede interna, redirecionamentos, respostas enormes) e custo; mostrar o destino já atende ao objetivo. O encurtador continua sem nunca acessar as URLs.
+- Depois de encurtar, a página inicial mostra a dica `DICA_PREVIA` (o texto cita o `+`; há teste que confere o sufixo nos três idiomas).
 
 ### URLs recusadas
 

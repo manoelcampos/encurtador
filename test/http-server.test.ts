@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
@@ -299,7 +299,7 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     assert.equal(res.status, 200);
 
     const spec = await res.json();
-    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, STATS_PATH, '/{code}']);
+    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
     assert.equal(spec.servers[0].url, BASE_URL);
 });
 
@@ -369,4 +369,74 @@ test('responde HEAD na raiz', async () => {
     const res = await fetch(`${apiUrl}/`, { method: 'HEAD' });
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+});
+
+const ENCODED_PREVIEW_SUFFIX = encodeURIComponent(PREVIEW_SUFFIX);
+const preview = (code: string, init: RequestInit = {}, base = apiUrl) => fetch(`${base}/${code}${PREVIEW_SUFFIX}`, { redirect: 'manual', ...init });
+
+test('o sufixo de pré-visualização mostra o destino sem redirecionar nem contar clique', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/destino?a=1&b=2' }))).json();
+
+    for (const res of [await preview(code), await fetch(`${apiUrl}/${code}${ENCODED_PREVIEW_SUFFIX}`, { redirect: 'manual' })]) {
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get('location'), null);
+        assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+
+        const html = await res.text();
+        assert.match(html, /<p id="dominio">example\.com<\/p>/);
+        assert.match(html, /<a class="botao" href="https:\/\/example\.com\/destino\?a=1&amp;b=2" rel="noopener noreferrer">/);
+        assert.match(html, /<a href="\/">/);
+    }
+
+    assert.equal((await preview(code, { method: 'HEAD' })).status, 200);
+    assert.equal(await totalClicks(code), 0);
+});
+
+test('a pré-visualização envia headers que impedem scripts e embutir a página', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/seguro' }))).json();
+    const res = await preview(code);
+    const csp = res.headers.get('content-security-policy') ?? '';
+    assert.match(csp, /default-src 'none'/);
+    assert.doesNotMatch(csp, /script-src/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.equal(res.headers.get('x-frame-options'), 'DENY');
+    assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+    assert.doesNotMatch(await res.text(), /<script/);
+});
+
+test('a pré-visualização busca o apelido sem diferenciar maiúsculas e escolhe o idioma pelo Accept-Language', async () => {
+    await post(JSON.stringify({ url: 'https://example.com/previa-apelido', alias: 'previa-promo' }));
+
+    const res = await preview('PREVIA-Promo', { headers: { 'Accept-Language': 'fr;q=1, es;q=0.8, en;q=0.5' } });
+    assert.equal(res.status, 200);
+
+    const html = await res.text();
+    assert.match(html, /<html lang="es">/);
+    assert.match(html, /Continuar/);
+    assert.match(html, /https:\/\/example\.com\/previa-apelido/);
+});
+
+test('a pré-visualização devolve 404 para código inexistente e não aceita o sufixo duplicado', async () => {
+    assert.equal((await preview('naoexiste1')).status, 404);
+    assert.equal((await preview(`naoexiste1${PREVIEW_SUFFIX}`)).status, 404);
+});
+
+test('a pré-visualização de link expirado devolve 410', async () => {
+    let now = new Date('2026-11-25T12:00:00Z');
+    const sqlite = new SqliteUrlRepository(':memory:');
+    const expiringServer = createApiServer(new UrlShortenerService(sqlite, BASE_URL, { clicks: sqlite, now: () => now }), BASE_URL);
+    await new Promise<void>(resolve => expiringServer.listen(0, resolve));
+    const expiringUrl = `http://localhost:${(expiringServer.address() as AddressInfo).port}`;
+
+    try {
+        const created = await fetch(expiringUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/x', expiresIn: '1h' }) });
+        const { code, expiresAt } = await created.json();
+        now = new Date(expiresAt);
+
+        const expired = await preview(code, {}, expiringUrl);
+        assert.equal(expired.status, 410);
+        assert.equal((await expired.json()).code, UrlErrorCode.LINK_EXPIRED);
+    } finally {
+        expiringServer.close();
+    }
 });

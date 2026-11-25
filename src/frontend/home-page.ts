@@ -40,7 +40,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
         input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #0b3d91; outline-offset: 2px; }
         #campo-apelido, #campo-validade { margin-top: .75rem; }
         #expiracao { margin: .25rem 0 0; color: #57606a; }
-        #dica-apelido { margin: .25rem 0 0; font-size: .9rem; color: #57606a; }
+        #dica-apelido, #dica-previa { margin: .25rem 0 0; font-size: .9rem; color: #57606a; }
         #erro { color: #b42318; margin: .5rem 0 0; min-height: 1.5em; }
         #resultado { margin-top: 1rem; word-break: break-all; }
         a { color: #0b3d91; }
@@ -87,6 +87,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
         <p id="resultado"><span id="rotulo-link" data-i18n="ROTULO_LINK_CURTO" hidden>${t.ROTULO_LINK_CURTO}</span>
             <span aria-live="polite"><a id="link" aria-describedby="expiracao"></a></span></p>
         <p id="expiracao" hidden></p>
+        <p id="dica-previa" data-i18n="DICA_PREVIA" hidden>${t.DICA_PREVIA}</p>
         <img id="qrcode" alt="" hidden>
         <div id="acoes" class="row" hidden>
             <button type="button" id="copiar" data-i18n="BOTAO_COPIAR">${t.BOTAO_COPIAR}</button>
