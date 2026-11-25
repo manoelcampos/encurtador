@@ -1,5 +1,5 @@
 import { ALIAS_MAX_LENGTH, ALIAS_MIN_LENGTH } from './alias-validator.ts';
-import { LINK_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { HEALTH_PATH, LINK_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { EXPIRATION_OPTIONS } from './expiration.ts';
 import { UrlErrorCode } from './invalid-url-error.ts';
 import { MAX_CLICKS_LIMIT } from './max-clicks.ts';
@@ -45,6 +45,20 @@ export function createOpenApiSpec(baseUrl: string) {
         },
         servers: [{ url: baseUrl }],
         paths: {
+            [HEALTH_PATH]: {
+                get: {
+                    summary: 'Saúde da aplicação',
+                    description: 'Para orquestradores (Docker, Kubernetes): confere se o banco de dados responde. '
+                        + 'Não conta no limite de requisições por IP. HEAD também funciona.',
+                    responses: {
+                        200: {
+                            description: 'Aplicação e banco funcionando',
+                            content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', const: 'ok' } } } } },
+                        },
+                        503: errorResponse('Banco de dados indisponível'),
+                    },
+                },
+            },
             [SHORTEN_PATH]: {
                 post: {
                     summary: 'Encurta uma URL',

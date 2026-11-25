@@ -18,6 +18,14 @@ const safeBrowsingKey = process.env.SAFE_BROWSING_API_KEY;
 const threatChecker = safeBrowsingKey ? new SafeBrowsingThreatChecker(safeBrowsingKey) : NO_THREAT_CHECKER;
 const repository = new SqliteUrlRepository(dbPath);
 const service = new UrlShortenerService(repository, baseUrl, { threatChecker, clicks: repository });
-createApiServer(service, baseUrl, limits).listen(port, () => {
+const server = createApiServer(service, baseUrl, limits).listen(port, () => {
     console.log(`API do encurtador ouvindo em ${baseUrl}`);
 });
+
+// Fechar o banco grava o WAL no arquivo principal. Sem processos pendentes, o Node termina sozinho.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, () => {
+        console.log(`${signal} recebido, encerrando.`);
+        server.close(() => repository.close());
+    });
+}

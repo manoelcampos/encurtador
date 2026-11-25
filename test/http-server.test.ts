@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { CODE_PARAM, DOCS_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, HEALTH_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
 import { MAX_CLICKS_LIMIT } from '../src/backend/max-clicks.ts';
@@ -374,9 +374,31 @@ test('serve a especificação OpenAPI com as rotas da API', async () => {
     assert.equal(res.status, 200);
 
     const spec = await res.json();
-    assert.deepEqual(Object.keys(spec.paths), [SHORTEN_PATH, LINK_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
+    assert.deepEqual(Object.keys(spec.paths), [HEALTH_PATH, SHORTEN_PATH, LINK_PATH, QRCODE_PATH, STATS_PATH, '/{code}', `/{code}${PREVIEW_SUFFIX}`]);
     assert.equal(spec.servers[0].url, BASE_URL);
     assert.ok(spec.paths[LINK_PATH].delete.responses[401].headers['WWW-Authenticate']);
+});
+
+test('a rota de saúde responde 200 com status ok, também em HEAD', async () => {
+    const res = await fetch(apiUrl + HEALTH_PATH);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { status: 'ok' });
+    assert.equal((await fetch(apiUrl + HEALTH_PATH, { method: 'HEAD' })).status, 200);
+});
+
+test('a rota de saúde responde 503 se o banco não responde', async () => {
+    const closed = new SqliteUrlRepository(':memory:');
+    closed.close();
+    const unhealthyServer = createApiServer(new UrlShortenerService(closed, BASE_URL), BASE_URL);
+    await new Promise<void>(resolve => unhealthyServer.listen(0, resolve));
+
+    try {
+        const res = await fetch(`http://localhost:${(unhealthyServer.address() as AddressInfo).port}${HEALTH_PATH}`);
+        assert.equal(res.status, 503);
+        assert.equal(typeof (await res.json()).error, 'string');
+    } finally {
+        unhealthyServer.close();
+    }
 });
 
 test('serve o Swagger UI apontando para a especificação', async () => {

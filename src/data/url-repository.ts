@@ -37,4 +37,7 @@ export interface UrlRepository {
 
     /** Apaga o link do código exato e os cliques dele, numa transação. Retorna false se o código não existir. */
     delete(code: string): Promise<boolean>;
+
+    /** Lança erro se o banco não responder. Usado pela rota de saúde. */
+    ping(): Promise<void>;
 }

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { languagesFromHeader } from './accept-language.ts';
-import { CODE_PARAM, DOCS_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
+import { CODE_PARAM, DOCS_PATH, HEALTH_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
@@ -93,6 +93,11 @@ async function handleRequest(
         return send(res, 204);
     }
 
+    // Antes do limite: orquestradores chamam a rota de saúde com frequência, sempre do mesmo IP.
+    if (isRead && path === HEALTH_PATH) {
+        return sendHealth(service, res);
+    }
+
     if (limits) {
         enforceLimit(isShorten ? limits.create : limits.access, clientIp(req, limits.trustProxy));
     }
@@ -151,6 +156,18 @@ function enforceLimit(limiter: RateLimiter, ip: string) {
     if (!allowed) {
         throw new HttpError(TOO_MANY_REQUESTS, TOO_MANY_REQUESTS_MESSAGE, { 'Retry-After': String(retryAfterSeconds) });
     }
+}
+
+/** `200` se o banco responde, senão `503`. */
+async function sendHealth(service: UrlShortenerService, res: ServerResponse) {
+    try {
+        await service.checkHealth();
+    } catch (error) {
+        console.error('Falha na verificação de saúde:', error);
+        throw new HttpError(SERVICE_UNAVAILABLE, 'Banco de dados indisponível.');
+    }
+
+    sendJson(res, 200, { status: 'ok' });
 }
 
 const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).href;

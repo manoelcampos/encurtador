@@ -1,6 +1,8 @@
 export const SHORTEN_PATH = '/api/urls';
 export const OPENAPI_PATH = '/api/openapi.json';
 export const DOCS_PATH = '/api/docs';
+/** Saúde da aplicação, para orquestradores (Docker, Kubernetes). Não conta no limite de requisições. */
+export const HEALTH_PATH = '/api/health';
 /** Marcador do código curto nas rotas, no formato do OpenAPI. */
 export const CODE_PARAM = '{code}';
 /** Um link curto; `DELETE` nesta rota apaga o link com o token de gestão. */

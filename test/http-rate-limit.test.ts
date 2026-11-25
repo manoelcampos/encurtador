@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { CODE_PARAM, LINK_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
+import { CODE_PARAM, HEALTH_PATH, LINK_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { rateLimitsFromEnv } from '../src/backend/rate-limit-config.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
@@ -101,6 +101,19 @@ test('OPTIONS não conta no limite', () => withServer({}, async apiUrl => {
 
     assert.equal((await shorten(apiUrl)).status, 201);
     assert.equal((await fetch(`${apiUrl}/`)).status, 200);
+}));
+
+test('a rota de saúde não conta no limite e responde mesmo com o limite esgotado', () => withServer({}, async apiUrl => {
+    for (let i = 0; i <= Number(ACCESS_LIMIT); i++) {
+        assert.equal((await fetch(apiUrl + HEALTH_PATH)).status, 200);
+    }
+
+    for (let i = 0; i < Number(ACCESS_LIMIT); i++) {
+        assert.equal((await fetch(`${apiUrl}/`)).status, 200);
+    }
+
+    assert.equal((await fetch(`${apiUrl}/`)).status, 429);
+    assert.equal((await fetch(apiUrl + HEALTH_PATH)).status, 200);
 }));
 
 test('depois do limite de criação, um corpo grande demais recebe 429 e não 413', () => withServer({}, async apiUrl => {
