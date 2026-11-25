@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
+import { Script } from 'node:vm';
 import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
@@ -95,6 +96,20 @@ test('serve a interface web na raiz, chamando a API de encurtar', async () => {
     const html = await res.text();
     assert.match(html, /<label for="url">/);
     assert.match(html, new RegExp(`fetch\\('${SHORTEN_PATH}'`));
+});
+
+test('a interface web tem botão para copiar o link curto', async () => {
+    const html = await (await fetch(`${apiUrl}/`)).text();
+    assert.match(html, /<button type="button" id="copiar">Copiar<\/button>/);
+    assert.match(html, /navigator\.clipboard\.writeText\(/);
+    assert.match(html, /<p id="aviso" role="status"><\/p>/);
+});
+
+test('o JavaScript da interface web é válido', async () => {
+    const html = await (await fetch(`${apiUrl}/`)).text();
+    const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? '';
+    assert.notEqual(script.trim(), '');
+    assert.doesNotThrow(() => new Script(script));
 });
 
 test('responde HEAD na raiz', async () => {
