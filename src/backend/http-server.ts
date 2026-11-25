@@ -1,9 +1,12 @@
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from './api-paths.ts';
 import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
+import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
 import type { UrlShortenerService } from './url-shortener-service.ts';
@@ -11,6 +14,9 @@ import type { UrlShortenerService } from './url-shortener-service.ts';
 const MAX_BODY_BYTES = 10 * 1024;
 const HOME_PATH = '/';
 const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
+const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
+// Só nomes simples (sem barras nem "..") dentro de STATIC_DIR, o que impede path traversal.
+const STATIC_FILE_NAME = /^[\w-]+\.\w+$/;
 
 // API pública e aberta: qualquer origem pode chamá-la.
 const CORS_HEADERS = {
@@ -28,6 +34,7 @@ export function createApiServer(service: UrlShortenerService, baseUrl: string): 
 
 async function handleRequest(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
 
     if (req.method === 'OPTIONS') {
         return send(res, 204);
@@ -37,7 +44,7 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return sendJson(res, 200, createOpenApiSpec(baseUrl));
     }
 
-    if ((req.method === 'GET' || req.method === 'HEAD') && path === HOME_PATH) {
+    if (isRead && path === HOME_PATH) {
         return send(res, 200, HTML_HEADERS, HOME_PAGE_HTML);
     }
 
@@ -49,12 +56,16 @@ async function handleRequest(service: UrlShortenerService, baseUrl: string, req:
         return shorten(service, baseUrl, req, res);
     }
 
+    if (isRead && path.startsWith(STATIC_PATH)) {
+        return sendStatic(res, path.slice(STATIC_PATH.length));
+    }
+
     const code = path.slice(1);
-    if ((req.method === 'GET' || req.method === 'HEAD') && CODE_PATTERN.test(code)) {
+    if (isRead && CODE_PATTERN.test(code)) {
         return redirect(service, code, res);
     }
 
-    throw new HttpError(404, 'Recurso não encontrado.');
+    throw new HttpError(404, NOT_FOUND_MESSAGE);
 }
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
@@ -71,6 +82,18 @@ async function redirect(service: UrlShortenerService, code: string, res: ServerR
     }
 
     send(res, 302, { Location: url });
+}
+
+async function sendStatic(res: ServerResponse, name: string) {
+    const contentType = STATIC_FILE_NAME.test(name) ? STATIC_CONTENT_TYPES[extname(name)] : undefined;
+    if (!contentType) {
+        throw new HttpError(404, NOT_FOUND_MESSAGE);
+    }
+
+    const body = await readFile(new URL(name, STATIC_DIR), 'utf8').catch(() => {
+        throw new HttpError(404, NOT_FOUND_MESSAGE);
+    });
+    send(res, 200, { 'Content-Type': contentType }, body);
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {

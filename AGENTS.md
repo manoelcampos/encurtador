@@ -34,7 +34,14 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
 
 - `src/backend/`: API HTTP e regras de negócio (`main.ts` é o ponto de entrada).
 - `src/data/`: acesso a dados (interface `UrlRepository` e implementação SQLite).
-- `src/frontend/`: interface web (HTML, CSS e JS em `home-page.ts`), servida pelo backend na raiz `/`. Só usa a API HTTP.
+- `src/frontend/`: interface web, servida pelo backend. Só usa a API HTTP.
+  - `home-page.ts`: HTML e CSS da página, servida na raiz `/`.
+  - `static/`: JavaScript da página em módulos ES (`.js` puro, sem bundler), servido em `/static/`. Os tipos são checados por JSDoc (`checkJs`) e o `tsc` copia os arquivos para `dist/`.
+    - `main.js`: só a ligação com o DOM; mantenha-o fino.
+    - `api.js`: chamadas à API HTTP.
+    - `logic.js`: regras sem DOM, testadas com `node --test`.
+    - `messages.js`: textos mostrados ao usuário.
+  - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
 - `test/`: testes automatizados.
 
 ## API
@@ -45,6 +52,7 @@ API pública e aberta, sem autenticação, com CORS liberado para qualquer orige
 |--------|------|-----------|
 | `POST` | `/api/urls` | Corpo `{"url": "https://..."}`. Devolve `201` com `{"code", "shortUrl"}`. |
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
+| `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET` | `/:code` | Redireciona (`302`) para a URL original, ou `404`. |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |

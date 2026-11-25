@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { readdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import { Script } from 'node:vm';
 import { DOCS_PATH, OPENAPI_PATH, SHORTEN_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
 import { SqliteUrlRepository } from '../src/data/sqlite-url-repository.ts';
+import { STATIC_DIR, STATIC_PATH } from '../src/frontend/static-files.ts';
 
 const BASE_URL = 'https://encurta.do/';
 const server = createApiServer(new UrlShortenerService(new SqliteUrlRepository(':memory:')), BASE_URL);
@@ -88,28 +89,46 @@ test('serve o Swagger UI apontando para a especificação', async () => {
     assert.match(await res.text(), new RegExp(OPENAPI_PATH));
 });
 
-test('serve a interface web na raiz, chamando a API de encurtar', async () => {
+test('serve a interface web na raiz, apontando para a API de encurtar e para o JS', async () => {
     const res = await fetch(`${apiUrl}/`);
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') ?? '', /text\/html/);
 
     const html = await res.text();
     assert.match(html, /<label for="url">/);
-    assert.match(html, new RegExp(`fetch\\('${SHORTEN_PATH}'`));
+    assert.match(html, new RegExp(`data-api="${SHORTEN_PATH}"`));
+    assert.match(html, new RegExp(`<script type="module" src="${STATIC_PATH}main\\.js"></script>`));
 });
 
 test('a interface web tem botão para copiar o link curto', async () => {
     const html = await (await fetch(`${apiUrl}/`)).text();
     assert.match(html, /<button type="button" id="copiar">Copiar link<\/button>/);
-    assert.match(html, /navigator\.clipboard\.writeText\(/);
     assert.match(html, /<p id="aviso" role="status"><\/p>/);
+
+    const js = await (await fetch(`${apiUrl}${STATIC_PATH}main.js`)).text();
+    assert.match(js, /navigator\.clipboard\.writeText\(/);
 });
 
-test('o JavaScript da interface web é válido', async () => {
-    const html = await (await fetch(`${apiUrl}/`)).text();
-    const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? '';
-    assert.notEqual(script.trim(), '');
-    assert.doesNotThrow(() => new Script(script));
+test('serve todos os arquivos JS da interface, em GET e HEAD', async () => {
+    const files = (await readdir(STATIC_DIR)).filter(name => name.endsWith('.js'));
+    assert.ok(files.includes('main.js'));
+    for (const file of files) {
+        for (const method of ['GET', 'HEAD']) {
+            const res = await fetch(`${apiUrl}${STATIC_PATH}${file}`, { method });
+            assert.equal(res.status, 200, `${method} ${file}`);
+            assert.equal(res.headers.get('content-type'), 'text/javascript; charset=utf-8');
+        }
+    }
+});
+
+test('não serve arquivos fora da pasta estática nem de tipo não permitido', async () => {
+    const paths = ['nao-existe.js', '..%2f..%2fpackage.json', '..%2fhome-page.ts', '%2e%2e/home-page.ts', '..%5cstatic-files.ts', 'sub/main.js', '', 'main'];
+    for (const path of paths) {
+        assert.equal((await fetch(`${apiUrl}${STATIC_PATH}${path}`)).status, 404, path);
+    }
+
+    // O URL normaliza "/static/../package.json" para "/package.json", que não é rota.
+    assert.equal((await fetch(`${apiUrl}${STATIC_PATH}../package.json`)).status, 404);
 });
 
 test('responde HEAD na raiz', async () => {

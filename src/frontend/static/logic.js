@@ -1,0 +1,73 @@
+// Regras da página sem DOM, testáveis com node --test.
+import { AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from './messages.js';
+
+const STATUS_URL_INVALIDA = 400;
+
+/**
+ * Mensagem de erro a partir do corpo da resposta da API.
+ * @param {unknown} dados corpo JSON da resposta, ou `{}` se não era JSON
+ * @returns {string}
+ */
+export function mensagemDaApi(dados) {
+    const erro = typeof dados === 'object' && dados !== null && 'error' in dados ? dados.error : undefined;
+    return typeof erro === 'string' ? erro : MENSAGEM_PADRAO;
+}
+
+/**
+ * Mensagem para o erro capturado ao encurtar.
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function mensagemDeFalha(error) {
+    // O fetch lança TypeError quando não consegue falar com o servidor.
+    if (error instanceof TypeError) return MENSAGEM_CONEXAO;
+    return error instanceof Error ? error.message : MENSAGEM_PADRAO;
+}
+
+/**
+ * Se o campo de URL deve ser marcado como inválido.
+ * @param {number} status código HTTP da resposta
+ */
+export function urlInvalida(status) {
+    return status === STATUS_URL_INVALIDA;
+}
+
+/**
+ * Outra URL pode ter sido encurtada enquanto a cópia rodava.
+ * @param {string} copiado link que estava sendo copiado
+ * @param {string} atual link mostrado agora
+ */
+export function linkMudou(copiado, atual) {
+    return atual !== copiado;
+}
+
+/** @param {boolean} sucesso */
+export function avisoDeCopia(sucesso) {
+    return sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA;
+}
+
+/**
+ * @typedef {object} DependenciasCopia
+ * @property {(texto: string) => Promise<boolean>} copiar copia o texto e diz se deu certo
+ * @property {() => string} linkAtual link mostrado agora
+ * @property {(mensagem: string) => void} avisar escreve o aviso para o leitor de tela
+ * @property {() => void} selecionar seleciona o link para cópia manual
+ * @property {(acao: () => void) => void} aposAtraso executa a ação depois do atraso do aviso
+ */
+
+/**
+ * Copia o link mostrado e avisa o resultado, sem avisar se outro link aparecer no meio.
+ * @param {DependenciasCopia} deps
+ */
+export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAtraso }) {
+    const copiado = linkAtual();
+    const sucesso = await copiar(copiado);
+    if (linkMudou(copiado, linkAtual())) return;
+
+    // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
+    avisar('');
+    aposAtraso(() => {
+        if (!linkMudou(copiado, linkAtual())) avisar(avisoDeCopia(sucesso));
+    });
+    if (!sucesso) selecionar();
+}
