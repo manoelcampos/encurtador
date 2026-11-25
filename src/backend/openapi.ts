@@ -120,7 +120,7 @@ export function createOpenApiSpec(baseUrl: string) {
                 get: {
                     summary: 'Estatísticas de cliques do link curto',
                     description: `Total de cliques desde a criação e cliques por dia (UTC) nos últimos ${STATS_DAYS} dias, `
-                        + 'contando hoje. Dias sem cliques não aparecem. Continua disponível depois que o link expira.',
+                        + 'contando hoje. Dias sem cliques não aparecem. Continua disponível depois que o link expira ou esgota os acessos.',
                     parameters: [CODE_PARAMETER],
                     responses: {
                         200: {
@@ -137,6 +137,7 @@ export function createOpenApiSpec(baseUrl: string) {
                     summary: 'Redireciona para a URL original',
                     description: 'Cada GET que redireciona conta como um clique (HEAD não conta). Link expirado não conta clique. '
                         + 'Em link com `maxClicks`, cada GET que redireciona gasta um acesso; sem acesso restante, responde 410. '
+                        + 'HEAD não gasta acesso; em link com `maxClicks`, HEAD responde 200 sem `Location`, para não revelar o destino. '
                         + 'O Swagger UI segue o redirecionamento, então teste esta rota direto no navegador.',
                     parameters: [CODE_PARAMETER],
                     responses: {
@@ -155,7 +156,8 @@ export function createOpenApiSpec(baseUrl: string) {
                     summary: 'Mostra o destino do link curto, sem redirecionar',
                     description: 'Página HTML com o domínio e a URL de destino e um link "Continuar". Não conta clique. '
                         + `Também aceita o sufixo codificado (${encodeURIComponent(PREVIEW_SUFFIX)}). `
-                        + 'O idioma vem do header Accept-Language. O título da página de destino não é buscado.',
+                        + 'O idioma vem do header Accept-Language. O título da página de destino não é buscado. '
+                        + 'Em link com `maxClicks`, a página não mostra o destino e "Continuar" leva ao link curto (o GET gasta um acesso).',
                     parameters: [CODE_PARAMETER],
                     responses: {
                         200: { description: 'Página de pré-visualização', content: { 'text/html': { schema: { type: 'string' } } } },

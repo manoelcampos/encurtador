@@ -1,7 +1,6 @@
 import { ALIAS_MAX_LENGTH } from '../backend/alias-validator.ts';
 import { LINK_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../backend/api-paths.ts';
 import { EXPIRATION_OPTIONS } from '../backend/expiration.ts';
-import { MAX_CLICKS_LIMIT } from '../backend/max-clicks.ts';
 import { STATIC_PATH } from './static-files.ts';
 import { chaveDaValidade } from './static/logic.js';
 import { IDIOMA_DO_HTML, IDIOMAS, TRADUCOES } from './static/messages.js';
@@ -94,7 +93,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
                 <!-- type="text": com type="number", um texto inválido viraria valor vazio e criaria um link sem limite. -->
                 <div class="row">
                     <input id="limite-acessos" name="maxClicks" type="text" inputmode="numeric" autocomplete="off"
-                        maxlength="${String(MAX_CLICKS_LIMIT).length}" aria-describedby="dica-limite erro">
+                        aria-describedby="dica-limite erro">
                 </div>
                 <p id="dica-limite" data-i18n="DICA_LIMITE_ACESSOS">${t.DICA_LIMITE_ACESSOS}</p>
             </div>

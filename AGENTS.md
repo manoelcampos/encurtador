@@ -61,8 +61,8 @@ API pública e aberta, sem contas, com CORS liberado para qualquer origem (inclu
 | `GET`, `HEAD` | `/` | Interface web para encurtar URLs. |
 | `GET`, `HEAD` | `/static/:arquivo` | JavaScript da interface web (só arquivos da pasta `src/frontend/static/`). |
 | `GET`, `HEAD` | `/api/urls/{code}/stats` | Estatísticas de cliques em JSON: `{"code", "totalClicks", "clicksByDay": [{"date": "YYYY-MM-DD", "clicks"}]}`, ou `404`. Veja "Contagem de cliques". |
-| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou ou esgotou os acessos. Só `GET` conta como clique e gasta acesso. |
-| `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar, sem contar clique e sem gastar acesso, `404`, ou `410` se o link expirou ou esgotou os acessos. Veja "Pré-visualização". |
+| `GET`, `HEAD` | `/:code` | Redireciona (`302`) para a URL original, `404`, ou `410` se o link expirou ou esgotou os acessos. Só `GET` conta como clique e gasta acesso; `HEAD` de link com limite dá `200` sem `Location`. |
+| `GET`, `HEAD` | `/:code+` | Página HTML com o destino do link, sem redirecionar, sem contar clique e sem gastar acesso (sem o destino em link com limite), `404`, ou `410` se o link expirou ou esgotou os acessos. Veja "Pré-visualização". |
 | `GET` | `/api/docs` | Swagger UI. |
 | `GET` | `/api/openapi.json` | Especificação OpenAPI. Mantenha `src/backend/openapi.ts` em sincronia com as rotas. |
 
@@ -71,7 +71,7 @@ Variáveis de ambiente: `PORT` (padrão `3000`), `BASE_URL` (padrão `http://loc
 ### Contagem de cliques
 
 - Cada `GET /:code` que redireciona soma 1 ao contador do código no dia (UTC) na tabela `clicks_daily(code, date, clicks)`, com UPSERT. Não guarda hora, IP nem user agent (LGPD), e `/stats` lê no máximo uma linha por dia, por mais cliques que haja.
-- `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas.
+- `HEAD` não conta: é usado por robôs e prévias de link, não por pessoas. Muitos robôs, porém, fazem `GET` e contam como clique (veja "Limite de acessos").
 - Se a gravação do clique falhar, o erro vai para o log e o redirecionamento acontece mesmo assim.
 - `totalClicks` conta todo o período. `clicksByDay` mostra só os últimos `STATS_DAYS` (30) dias em UTC, contando hoje, em ordem de data, e omite os dias sem cliques.
 - A data vem do relógio injetado no `UrlShortenerService` (opção `now`), para os testes controlarem as datas. O `ClickRepository` é injetado pela opção `clicks`; sem ela, nenhum clique é registrado (`NO_CLICK_REPOSITORY`).
@@ -102,8 +102,12 @@ Link de uso único (ou de N usos), que deixa de funcionar depois de N redirecion
 - O banco guarda só os acessos restantes (coluna `urls.remaining_clicks INTEGER NULL`; `NULL` é sem limite, inclusive para links antigos).
 - Só o `GET /:code` que redireciona gasta acesso, com um único `UPDATE urls SET remaining_clicks = remaining_clicks - 1 WHERE code = ? AND remaining_clicks > 0` (`consumeClick` no repositório), que só passa se `changes === 1`. Checar e gastar no mesmo comando é o que impede dois acessos simultâneos de passarem do limite (há teste com vários `GET` simultâneos). Link sem limite não executa esse `UPDATE`.
 - Sem acesso restante, `GET`/`HEAD /:code` respondem `410 Gone` com `{"error", "code": "LINK_EXHAUSTED"}` e nenhum clique é contado. O clique em `clicks_daily` continua sendo contado só quando o redirecionamento acontece.
-- `HEAD`, a pré-visualização (`/:code+`), o QR Code e `/stats` não gastam acesso, para robôs e prévias de link não consumirem um link de uso único.
-- **Decisão:** a pré-visualização e o QR Code de um link esgotado dão `410` (`LINK_EXHAUSTED`), como os de um link expirado, pois levariam a um link que não abre mais. `/stats` continua `200`, para o dono ver os números.
+- `HEAD`, a pré-visualização (`/:code+`), o QR Code e `/stats` não gastam acesso. Por isso, num link com limite, `HEAD` e a pré-visualização também não revelam o destino, senão contornariam o limite:
+  - **Decisão:** `HEAD /:code` de link com limite responde `200` sem corpo e sem `Location` (um `302` exigiria o `Location`).
+  - A pré-visualização mostra só um texto (`TEXTO_PREVIA_LIMITADA`) dizendo que o link tem acessos limitados e que o destino não é mostrado; o "Continuar" aponta para o link curto (`/{code}`), cujo `GET` gasta o acesso (`limitedPreviewPageHtml` em `preview-page.ts`).
+  - Links sem limite continuam com `HEAD` `302` e a pré-visualização com o destino.
+- Robôs de prévia de link (WhatsApp, Slack, Telegram, redes sociais etc.) e antivírus de e-mail costumam fazer `GET` e, portanto, gastam acesso. **Decisão:** o consumo não é pulado por User-Agent, pois ele é falsificável e viraria um jeito de burlar o limite. A dica do campo avisa que abrir o link ou compartilhá-lo em apps de mensagem pode gastar acessos.
+- **Decisão:** a pré-visualização e o QR Code de um link esgotado dão `410` (`LINK_EXHAUSTED`), como os de um link expirado, pois levariam a um link que não abre mais. `/stats` continua `200`, para o dono ver os números. O dono pode apagar o link esgotado com o token de gestão (`204`).
 - Combina com o prazo de validade: vale o que acabar primeiro. Se as duas coisas aconteceram, a resposta é `LINK_EXPIRED`.
 - Como no prazo, o apelido de um link esgotado continua ocupado; só o dono, com o token de gestão, pode apagá-lo.
 - Interface: o campo "Limite de acessos" (`type="text"` com `inputmode="numeric"`, pois com `type="number"` um texto inválido viraria valor vazio e criaria um link sem limite; vazio é sem limite). `limiteDoPedido` em `logic.js` manda o inteiro como número e qualquer outro texto como está, para a API recusar e o campo ser marcado. O resultado mostra "Este link funciona N vez(es)" (`textoDosUsos`, com `Intl.PluralRules` e as chaves `USOS_ONE`/`USOS_OTHER`). A dica e a mensagem de erro citam o `MAX_CLICKS_LIMIT` (há teste). "Meus links" não guarda o limite.
@@ -119,7 +123,7 @@ Link de uso único (ou de N usos), que deixa de funcionar depois de N redirecion
 ### Pré-visualização
 
 - O código seguido de `PREVIEW_SUFFIX` (`+`, em `api-paths.ts`), como `/AbC234xYz+`, mostra uma página com o domínio de destino em destaque, a URL completa, um link "Continuar" (`rel="noopener noreferrer"`) e um link para a página inicial. A forma codificada (`/AbC234xYz%2B`) também funciona. O `+` não cabe no `CODE_PATTERN`, então não conflita com códigos nem apelidos.
-- Usa a mesma busca do redirecionamento (`resolve`): apelido sem diferenciar maiúsculas, `404` para código inexistente e `410` (`LINK_EXPIRED` ou `LINK_EXHAUSTED`) para link expirado ou esgotado, em JSON como nas outras rotas. Não conta clique nem gasta acesso. `HEAD` funciona.
+- Usa a mesma busca do redirecionamento (`findActive`): apelido sem diferenciar maiúsculas, `404` para código inexistente e `410` (`LINK_EXPIRED` ou `LINK_EXHAUSTED`) para link expirado ou esgotado, em JSON como nas outras rotas. Não conta clique nem gasta acesso; por isso, em link com limite, não mostra o destino (veja "Limite de acessos"). `HEAD` funciona.
 - Segurança: todo valor interpolado no HTML passa por `escapeHtml`; só URLs `http`/`https` viram link (outras ficam com `href="#"`), sem confiar só na validação da criação. A resposta envia `Content-Security-Policy` sem scripts (`default-src 'none'`, só CSS embutido, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `X-Content-Type-Options: nosniff`.
 - Idioma: escolhido pelo header `Accept-Language` (`languagesFromHeader` em `accept-language.ts`, ordenado por `q`), com a mesma `escolherIdioma` do frontend e os textos dos arquivos `i18n-*.js`.
 - **Decisão:** a página não busca o título da página de destino. Fazer o servidor acessar URLs de terceiros abriria risco de SSRF (DNS que aponta para a rede interna, redirecionamentos, respostas enormes) e custo; mostrar o destino já atende ao objetivo. O encurtador continua sem nunca acessar as URLs.

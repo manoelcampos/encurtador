@@ -525,12 +525,19 @@ test('a pré-visualização de link expirado devolve 410', async () => {
 const createLimited = async (maxClicks: number) => (await post(JSON.stringify({ url: 'https://example.com/unico', maxClicks }))).json();
 const visit = (code: string, method = 'GET') => fetch(`${apiUrl}/${code}`, { method, redirect: 'manual' });
 
-test('maxClicks 1: HEAD e pré-visualização não gastam; o primeiro GET redireciona e o segundo dá 410 LINK_EXHAUSTED', async () => {
+test('maxClicks 1: HEAD e pré-visualização não gastam nem revelam o destino; o primeiro GET redireciona e o segundo dá 410', async () => {
     const { code, maxClicks } = await createLimited(1);
     assert.equal(maxClicks, 1);
 
-    assert.equal((await visit(code, 'HEAD')).status, 302);
-    assert.equal((await preview(code)).status, 200);
+    const head = await visit(code, 'HEAD');
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get('location'), null);
+
+    const page = await preview(code);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.doesNotMatch(html, /example\.com/);
+    assert.match(html, new RegExp(`<a class="botao" href="/${code}" rel="noopener noreferrer">`));
     assert.equal((await fetch(apiUrl + QRCODE_PATH.replace(CODE_PARAM, code))).status, 200);
 
     const first = await visit(code);
@@ -547,6 +554,24 @@ test('maxClicks 1: HEAD e pré-visualização não gastam; o primeiro GET redire
     const stats = await fetch(apiUrl + STATS_PATH.replace(CODE_PARAM, code));
     assert.equal(stats.status, 200);
     assert.equal((await stats.json()).totalClicks, 1);
+});
+
+test('link sem limite continua com HEAD 302 e pré-visualização com o destino', async () => {
+    const { code } = await (await post(JSON.stringify({ url: 'https://example.com/livre' }))).json();
+    assert.equal((await visit(code, 'HEAD')).headers.get('location'), 'https://example.com/livre');
+    assert.match(await (await preview(code)).text(), /example\.com\/livre/);
+});
+
+test('o dono apaga com o token um link que esgotou os acessos', async () => {
+    const { code, manageToken } = await createLimited(1);
+    await (await visit(code)).body?.cancel();
+    assert.equal((await visit(code, 'HEAD')).status, 410);
+
+    const res = await fetch(apiUrl + LINK_PATH.replace(CODE_PARAM, code), {
+        method: 'DELETE', headers: { Authorization: `Bearer ${manageToken}` },
+    });
+    assert.equal(res.status, 204);
+    assert.equal((await visit(code)).status, 404);
 });
 
 test('GETs simultâneos num link com maxClicks N redirecionam exatamente N vezes', async () => {

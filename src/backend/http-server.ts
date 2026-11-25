@@ -7,7 +7,7 @@ import { CODE_PATTERN } from './code-generator.ts';
 import { HttpError } from './http-error.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { HOME_PAGE_HTML } from '../frontend/home-page.ts';
-import { previewLanguage, previewPageHtml } from '../frontend/preview-page.ts';
+import { limitedPreviewPageHtml, previewLanguage, previewPageHtml } from '../frontend/preview-page.ts';
 import { STATIC_CONTENT_TYPES, STATIC_DIR, STATIC_PATH } from '../frontend/static-files.ts';
 import { createOpenApiSpec } from './openapi.ts';
 import { createQrCodeSvg } from './qr-code.ts';
@@ -15,7 +15,7 @@ import { clientIp } from './client-ip.ts';
 import type { RateLimits } from './rate-limit-config.ts';
 import type { RateLimiter } from './rate-limiter.ts';
 import { SWAGGER_UI_HTML } from './swagger-ui.ts';
-import type { UrlShortenerService } from './url-shortener-service.ts';
+import type { StoredLink, UrlShortenerService } from './url-shortener-service.ts';
 
 const MAX_BODY_BYTES = 10 * 1024;
 const HOME_PATH = '/';
@@ -200,9 +200,17 @@ function requireCode<T>(found: T | undefined): T {
  * (e gastariam o acesso de um link de uso único).
  */
 async function redirect(service: UrlShortenerService, code: string, countClick: boolean, res: ServerResponse) {
-    const url = countClick ? await service.visit(code) : await service.resolve(code);
-    send(res, 302, { Location: requireCode(url) });
+    if (countClick) {
+        return send(res, 302, { Location: requireCode(await service.visit(code)) });
+    }
+
+    // HEAD de link com limite responde 200 sem Location: senão revelaria o destino sem gastar acesso.
+    const link = requireCode(await service.findActive(code));
+    return hidesDestination(link) ? send(res, 200) : send(res, 302, { Location: link.url });
 }
+
+/** Link com limite de acessos não revela o destino fora do GET que gasta o acesso. */
+const hidesDestination = (link: StoredLink) => link.remainingClicks !== null;
 
 /** Código pedido em `/{code}+` (ou `/{code}%2B`), ou undefined se o caminho não termina com o sufixo. */
 function previewCodeOf(path: string): string | undefined {
@@ -210,11 +218,14 @@ function previewCodeOf(path: string): string | undefined {
     return suffix ? path.slice(1, -suffix.length) : undefined;
 }
 
-/** Mostra o destino sem redirecionar. Não conta clique nem gasta acesso; link expirado ou esgotado dá 410, como no redirecionamento. */
+/** Mostra o destino sem redirecionar (link com limite: sem o destino). Não conta clique nem gasta acesso; link expirado ou esgotado dá 410. */
 async function sendPreview(service: UrlShortenerService, code: string, req: IncomingMessage, res: ServerResponse) {
-    const url = requireCode(await service.resolve(code));
+    const link = requireCode(await service.findActive(code));
     const language = previewLanguage(languagesFromHeader(req.headers['accept-language']));
-    send(res, 200, PREVIEW_HEADERS, previewPageHtml(url, language, HOME_PATH));
+    const html = hidesDestination(link)
+        ? limitedPreviewPageHtml(HOME_PATH + encodeURIComponent(link.code), language, HOME_PATH)
+        : previewPageHtml(link.url, language, HOME_PATH);
+    send(res, 200, PREVIEW_HEADERS, html);
 }
 
 async function sendStatic(res: ServerResponse, name: string) {

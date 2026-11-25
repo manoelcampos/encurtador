@@ -1,5 +1,7 @@
 import { escolherIdioma, IDIOMA_PADRAO, TRADUCOES } from './static/messages.js';
 
+type Traducao = typeof TRADUCOES[string];
+
 const HTML_ESCAPES: Readonly<Record<string, string>> = {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 };
@@ -15,7 +17,32 @@ export const previewLanguage = (requested: readonly string[]) => escolherIdioma(
  * Todo valor interpolado é escapado, pois a URL de destino vem de quem criou o link.
  */
 export function previewPageHtml(url: string, language: string, homePath: string): string {
-    const t = TRADUCOES[language] ?? TRADUCOES[IDIOMA_PADRAO];
+    const t = translationOf(language);
+    return pageHtml(t, language, homePath, `
+        <p>${escapeHtml(t.TEXTO_PREVIA)}</p>
+        <p id="dominio">${escapeHtml(hostnameOf(url))}</p>
+        <p>${escapeHtml(t.ROTULO_URL_COMPLETA)} <code id="url">${escapeHtml(url)}</code></p>
+        ${continueButton(t, continueHref(url))}`);
+}
+
+/**
+ * Página de um link com limite de acessos: não mostra o destino, senão a prévia (que não gasta acesso) contornaria o limite.
+ * "Continuar" leva ao link curto (`shortPath`), cujo GET gasta o acesso.
+ */
+export function limitedPreviewPageHtml(shortPath: string, language: string, homePath: string): string {
+    const t = translationOf(language);
+    return pageHtml(t, language, homePath, `
+        <p>${escapeHtml(t.TEXTO_PREVIA_LIMITADA)}</p>
+        ${continueButton(t, shortPath)}`);
+}
+
+const translationOf = (language: string) => TRADUCOES[language] ?? TRADUCOES[IDIOMA_PADRAO];
+
+const continueButton = (t: Traducao, href: string) =>
+    `<p><a class="botao" href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(t.BOTAO_CONTINUAR)}</a></p>`;
+
+/** Estrutura comum das páginas de pré-visualização; `content` já deve vir escapado. */
+function pageHtml(t: Traducao, language: string, homePath: string, content: string): string {
     return `<!doctype html>
 <html lang="${escapeHtml(language)}">
 <head>
@@ -35,11 +62,7 @@ export function previewPageHtml(url: string, language: string, homePath: string)
 </head>
 <body>
     <main>
-        <h1>${escapeHtml(t.TITULO_PREVIA)}</h1>
-        <p>${escapeHtml(t.TEXTO_PREVIA)}</p>
-        <p id="dominio">${escapeHtml(hostnameOf(url))}</p>
-        <p>${escapeHtml(t.ROTULO_URL_COMPLETA)} <code id="url">${escapeHtml(url)}</code></p>
-        <p><a class="botao" href="${escapeHtml(continueHref(url))}" rel="noopener noreferrer">${escapeHtml(t.BOTAO_CONTINUAR)}</a></p>
+        <h1>${escapeHtml(t.TITULO_PREVIA)}</h1>${content}
         <p><a href="${escapeHtml(homePath)}">${escapeHtml(t.LINK_PAGINA_INICIAL)}</a></p>
     </main>
 </body>
