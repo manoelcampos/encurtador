@@ -23,6 +23,8 @@ export const HOME_PAGE_HTML = `<!doctype html>
         a { color: #0b3d91; }
         #acoes { margin-top: .5rem; }
         #qrcode { display: block; margin-top: 1rem; max-width: 100%; height: auto; }
+        #redes { list-style: none; margin: .5rem 0 0; padding: 0; }
+        .row[hidden] { display: none; }
         #aviso { margin: .5rem 0 0; min-height: 1.5em; }
     </style>
 </head>
@@ -45,7 +47,9 @@ export const HOME_PAGE_HTML = `<!doctype html>
         <div id="acoes" class="row" hidden>
             <button type="button" id="copiar">Copiar link</button>
             <a id="baixar" class="botao" download>Baixar QR Code</a>
+            <button type="button" id="compartilhar">Compartilhar</button>
         </div>
+        <ul id="redes" class="row" aria-label="Opções de compartilhamento" hidden></ul>
         <p id="aviso" role="status"></p>
     </main>
     <script type="module" src="${STATIC_PATH}main.js"></script>

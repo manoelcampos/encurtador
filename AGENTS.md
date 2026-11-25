@@ -41,6 +41,7 @@ O CI (`.github/workflows/ci.yml`) roda `npm ci`, lint, testes e build em todo pu
     - `main.js`: só a ligação com o DOM; mantenha-o fino.
     - `api.js`: chamadas à API HTTP.
     - `logic.js`: regras sem DOM, testadas com `node --test`.
+    - `share.js`: regras de compartilhamento do link curto (Web Share API e redes alternativas), sem DOM e testadas.
     - `messages.js`: textos mostrados ao usuário.
   - `static-files.ts`: rota, pasta e tipos de conteúdo permitidos dos arquivos estáticos.
 - `test/`: testes automatizados.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
+import { avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, qrCodeDoLink, urlInvalida } from '../src/frontend/static/logic.js';
 import { ALT_QRCODE, AVISO_COPIADO, AVISO_FALHA_COPIA, MENSAGEM_CONEXAO, MENSAGEM_PADRAO } from '../src/frontend/static/messages.js';
 
 test('usa a mensagem de erro da API quando ela vem no corpo', () => {
@@ -37,6 +37,34 @@ test('detecta quando o link mudou durante a cópia', () => {
 test('escolhe o aviso de cópia conforme o resultado', () => {
     assert.equal(avisoDeCopia(true), AVISO_COPIADO);
     assert.equal(avisoDeCopia(false), AVISO_FALHA_COPIA);
+});
+
+/** Dependências falsas do aviso; o atraso só roda quando o teste chama `rodarAtraso`. */
+function criarAviso() {
+    const avisos: string[] = [];
+    let acaoAtrasada = () => {};
+    const deps = {
+        avisar: (mensagem: string) => { avisos.push(mensagem); },
+        aposAtraso: (acao: () => void) => { acaoAtrasada = acao; },
+    };
+
+    return { deps, avisos, rodarAtraso: () => acaoAtrasada() };
+}
+
+test('avisar de novo limpa o aviso e só escreve a mensagem depois do atraso', () => {
+    const aviso = criarAviso();
+    avisarDeNovo(aviso.deps, 'Olá');
+    assert.deepEqual(aviso.avisos, ['']);
+
+    aviso.rodarAtraso();
+    assert.deepEqual(aviso.avisos, ['', 'Olá']);
+});
+
+test('avisar de novo não escreve a mensagem se ela deixou de valer durante o atraso', () => {
+    const aviso = criarAviso();
+    avisarDeNovo(aviso.deps, 'Olá', () => false);
+    aviso.rodarAtraso();
+    assert.deepEqual(aviso.avisos, ['']);
 });
 
 const LINK = 'https://encurta.do/a';
