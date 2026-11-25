@@ -12,6 +12,7 @@ const ptBR = {
     BOTAO_COMPARTILHAR: 'Compartilhar',
     ROTULO_OPCOES_COMPARTILHAMENTO: 'Opções de compartilhamento',
     MENSAGEM_PADRAO: 'Não foi possível encurtar a URL.',
+    MENSAGEM_URL_INVALIDA: 'Informe uma URL válida, começando com http:// ou https://.',
     MENSAGEM_CONEXAO: 'Falha de conexão com o servidor.',
     AVISO_COPIADO: 'Copiado!',
     AVISO_FALHA_COPIA: 'Não foi possível copiar. O link foi selecionado para você copiar manualmente.',

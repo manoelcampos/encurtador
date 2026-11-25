@@ -13,6 +13,7 @@ const en = {
     BOTAO_COMPARTILHAR: 'Share',
     ROTULO_OPCOES_COMPARTILHAMENTO: 'Sharing options',
     MENSAGEM_PADRAO: 'Could not shorten the URL.',
+    MENSAGEM_URL_INVALIDA: 'Enter a valid URL starting with http:// or https://.',
     MENSAGEM_CONEXAO: 'Could not connect to the server.',
     AVISO_COPIADO: 'Copied!',
     AVISO_FALHA_COPIA: 'Could not copy. The link was selected so you can copy it manually.',

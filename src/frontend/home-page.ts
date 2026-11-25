@@ -56,9 +56,9 @@ export const HOME_PAGE_HTML = `<!doctype html>
             </div>
             <p id="erro" role="alert"></p>
         </form>
-        <div aria-live="polite">
-            <p id="resultado" hidden><span data-i18n="ROTULO_LINK_CURTO">${t.ROTULO_LINK_CURTO}</span> <a id="link"></a></p>
-        </div>
+        <!-- Só o link fica na região aria-live, para a troca de idioma do rótulo não ser anunciada. -->
+        <p id="resultado"><span id="rotulo-link" data-i18n="ROTULO_LINK_CURTO" hidden>${t.ROTULO_LINK_CURTO}</span>
+            <span aria-live="polite"><a id="link"></a></span></p>
         <img id="qrcode" alt="" hidden>
         <div id="acoes" class="row" hidden>
             <button type="button" id="copiar" data-i18n="BOTAO_COPIAR">${t.BOTAO_COPIAR}</button>

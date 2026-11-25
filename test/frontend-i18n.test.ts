@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
+import { HOME_PAGE_HTML } from '../src/frontend/home-page.ts';
 import { STATIC_DIR } from '../src/frontend/static-files.ts';
 import {
     definirIdioma, escolherIdioma, IDIOMA_DO_HTML, IDIOMA_PADRAO, IDIOMAS, texto, TRADUCOES,
@@ -69,4 +70,28 @@ test('troca os textos ao definir o idioma, inclusive os gerados pelo JS', () => 
 
     definirIdioma('xx');
     assert.equal(texto('BOTAO_ENCURTAR'), TRADUCOES[IDIOMA_PADRAO].BOTAO_ENCURTAR);
+});
+
+/** Valores de data-i18n e data-i18n-<atributo> no HTML, que são chaves de texto. */
+const CHAVE_NO_HTML = /data-i18n(?:-[\w-]+)?="([^"]*)"/g;
+
+test('toda chave usada no HTML existe nas traduções', () => {
+    const chaves = [...HOME_PAGE_HTML.matchAll(CHAVE_NO_HTML)].map(([, chave]) => chave);
+    assert.ok(chaves.length > 0);
+    for (const chave of chaves) {
+        assert.ok(Object.hasOwn(TRADUCOES[IDIOMA_DO_HTML], chave), chave);
+    }
+});
+
+// O HTML de home-page.ts insere esses textos sem escapar.
+const CARACTERE_ESPECIAL_DE_HTML = /["<>&]/;
+
+test('os textos usados no HTML não têm caracteres especiais de HTML', () => {
+    const textosDoHtml = [
+        ...Object.values(TRADUCOES[IDIOMA_DO_HTML]),
+        ...IDIOMAS.map(idioma => TRADUCOES[idioma].NOME_IDIOMA),
+    ];
+    for (const valor of textosDoHtml) {
+        assert.doesNotMatch(valor, CARACTERE_ESPECIAL_DE_HTML);
+    }
 });

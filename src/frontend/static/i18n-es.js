@@ -13,6 +13,7 @@ const es = {
     BOTAO_COMPARTILHAR: 'Compartir',
     ROTULO_OPCOES_COMPARTILHAMENTO: 'Opciones para compartir',
     MENSAGEM_PADRAO: 'No se pudo acortar la URL.',
+    MENSAGEM_URL_INVALIDA: 'Introduce una URL válida que empiece con http:// o https://.',
     MENSAGEM_CONEXAO: 'Error de conexión con el servidor.',
     AVISO_COPIADO: '¡Copiado!',
     AVISO_FALHA_COPIA: 'No se pudo copiar. El enlace fue seleccionado para que lo copies manualmente.',

@@ -33,12 +33,12 @@ test('devolve o código e o shortUrl quando a API responde 201', async () => {
     assert.deepEqual(JSON.parse(String(pedido?.init?.body)), { url: URL_LONGA });
 });
 
-test('lança ApiError com status 400 e a mensagem da API', async () => {
+test('lança ApiError com status 400 e a mensagem traduzida de URL inválida', async () => {
     responder(400, JSON.stringify({ error: 'URL inválida.' }));
     await assert.rejects(encurtar(SHORTEN_PATH, 'x'), (error: unknown) => {
         assert.ok(error instanceof ApiError);
         assert.equal(error.status, 400);
-        assert.equal(error.message, 'URL inválida.');
+        assert.equal(error.message, texto('MENSAGEM_URL_INVALIDA'));
         return true;
     });
 });

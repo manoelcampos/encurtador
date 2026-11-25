@@ -26,7 +26,7 @@ const form = elemento('form', HTMLFormElement);
 const input = elemento('url', HTMLInputElement);
 const button = exigir(form.querySelector('button'), HTMLButtonElement);
 const erro = elemento('erro', HTMLElement);
-const resultado = elemento('resultado', HTMLElement);
+const rotuloLink = elemento('rotulo-link', HTMLElement);
 const link = elemento('link', HTMLAnchorElement);
 const acoes = elemento('acoes', HTMLElement);
 const aviso = elemento('aviso', HTMLElement);
@@ -49,7 +49,9 @@ let linkMostrado;
 function mostrarErro(mensagem, invalida) {
     erro.textContent = mensagem;
     linkMostrado = undefined;
-    resultado.hidden = true;
+    rotuloLink.hidden = true;
+    link.removeAttribute('href');
+    link.textContent = '';
     acoes.hidden = true;
     redes.hidden = true;
     qrCode.hidden = true;
@@ -64,7 +66,7 @@ function mostrarLink(linkCurto) {
     linkMostrado = linkCurto;
     link.href = linkCurto.shortUrl;
     link.textContent = linkCurto.shortUrl;
-    resultado.hidden = false;
+    rotuloLink.hidden = false;
     acoes.hidden = false;
     redes.hidden = true;
     mostrarQrCode(linkCurto);
@@ -218,6 +220,9 @@ function aplicarIdioma(idioma) {
     seletorIdioma.value = idioma;
     traduzirHtml();
     traduzirConteudoGerado();
+    // Erros e avisos são passageiros: limpa para não ficarem no idioma antigo.
+    erro.textContent = '';
+    aviso.textContent = '';
 }
 
 seletorIdioma.addEventListener('change', () => {
@@ -225,4 +230,4 @@ seletorIdioma.addEventListener('change', () => {
     salvarIdioma(seletorIdioma.value);
 });
 
-aplicarIdioma(escolherIdioma(lerIdiomaSalvo(), navigator.languages));
+aplicarIdioma(escolherIdioma(lerIdiomaSalvo(), navigator.languages ?? [navigator.language]));

@@ -28,7 +28,7 @@ export async function encurtar(caminho, url) {
     // Um proxy pode devolver HTML (ex.: 502); nesse caso usa a mensagem padrão.
     const dados = await res.json().catch(() => ({}));
     if (!res.ok) {
-        throw new ApiError(mensagemDaApi(dados), res.status);
+        throw new ApiError(mensagemDaApi(dados, res.status), res.status);
     }
 
     return { code: dados.code, shortUrl: dados.shortUrl };

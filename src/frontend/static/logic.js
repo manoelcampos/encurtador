@@ -8,11 +8,15 @@ const PREFIXO_ARQUIVO_QRCODE = 'qrcode-';
 const EXTENSAO_QRCODE = '.svg';
 
 /**
- * Mensagem de erro a partir do corpo da resposta da API.
+ * Mensagem de erro a partir da resposta da API.
+ * A API só responde em português; para URL inválida, usa o texto traduzido do frontend.
  * @param {unknown} dados corpo JSON da resposta, ou `{}` se não era JSON
+ * @param {number} status código HTTP da resposta
  * @returns {string}
  */
-export function mensagemDaApi(dados) {
+export function mensagemDaApi(dados, status) {
+    if (urlInvalida(status)) return texto('MENSAGEM_URL_INVALIDA');
+
     const erro = typeof dados === 'object' && dados !== null && 'error' in dados ? dados.error : undefined;
     return typeof erro === 'string' ? erro : texto('MENSAGEM_PADRAO');
 }
