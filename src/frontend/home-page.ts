@@ -1,6 +1,7 @@
 import { SHORTEN_PATH } from '../backend/api-paths.ts';
+import { STATIC_PATH } from './static-files.ts';
 
-// A página só fala com o backend pela API HTTP (POST em SHORTEN_PATH).
+// A página só fala com o backend pela API HTTP (POST em SHORTEN_PATH). O JS fica em static/.
 export const HOME_PAGE_HTML = `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -27,7 +28,7 @@ export const HOME_PAGE_HTML = `<!doctype html>
 <body>
     <main>
         <h1>Encurtador de URLs</h1>
-        <form id="form" novalidate>
+        <form id="form" data-api="${SHORTEN_PATH}" novalidate>
             <label for="url">URL para encurtar</label>
             <div class="row">
                 <input id="url" name="url" type="url" inputmode="url" autocomplete="url" required
@@ -44,113 +45,6 @@ export const HOME_PAGE_HTML = `<!doctype html>
         </div>
         <p id="aviso" role="status"></p>
     </main>
-    <script>
-        const form = document.getElementById('form');
-        const input = document.getElementById('url');
-        const button = form.querySelector('button');
-        const erro = document.getElementById('erro');
-        const resultado = document.getElementById('resultado');
-        const link = document.getElementById('link');
-        const acoes = document.getElementById('acoes');
-        const aviso = document.getElementById('aviso');
-        const STATUS_URL_INVALIDA = 400;
-        const MENSAGEM_PADRAO = 'Não foi possível encurtar a URL.';
-
-        function mostrarErro(mensagem, urlInvalida) {
-            erro.textContent = mensagem;
-            resultado.hidden = true;
-            acoes.hidden = true;
-            if (urlInvalida) {
-                input.setAttribute('aria-invalid', 'true');
-                input.focus();
-            }
-        }
-
-        function mostrarLink(shortUrl) {
-            link.href = shortUrl;
-            link.textContent = shortUrl;
-            resultado.hidden = false;
-            acoes.hidden = false;
-        }
-
-        const AVISO_COPIADO = 'Copiado!';
-        const AVISO_FALHA_COPIA = 'Não foi possível copiar. O link foi selecionado para você copiar manualmente.';
-
-        function selecionarLink() {
-            window.getSelection().selectAllChildren(link);
-        }
-
-        const ATRASO_AVISO_MS = 100;
-
-        // Outra URL pode ter sido encurtada enquanto a cópia rodava.
-        function linkMudou(copiado) {
-            return link.textContent !== copiado;
-        }
-
-        // Limpa e escreve depois, para o leitor de tela anunciar de novo um texto repetido.
-        function avisarCopia(copiado, mensagem) {
-            aviso.textContent = '';
-            setTimeout(() => {
-                if (!linkMudou(copiado)) aviso.textContent = mensagem;
-            }, ATRASO_AVISO_MS);
-        }
-
-        // Sem HTTPS, navigator.clipboard não existe: o TypeError cai no catch.
-        async function copiar(texto) {
-            try {
-                await navigator.clipboard.writeText(texto);
-                return true;
-            } catch {
-                return false;
-            }
-        }
-
-        async function copiarLink() {
-            const copiado = link.textContent;
-            const sucesso = await copiar(copiado);
-            if (linkMudou(copiado)) return;
-
-            avisarCopia(copiado, sucesso ? AVISO_COPIADO : AVISO_FALHA_COPIA);
-            if (!sucesso) selecionarLink();
-        }
-
-        document.getElementById('copiar').addEventListener('click', copiarLink);
-
-        async function encurtar(url) {
-            const res = await fetch('${SHORTEN_PATH}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url }),
-            });
-
-            // Um proxy pode devolver HTML (ex.: 502); nesse caso usa a mensagem padrão.
-            const dados = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                const falha = new Error(dados.error ?? MENSAGEM_PADRAO);
-                falha.urlInvalida = res.status === STATUS_URL_INVALIDA;
-                throw falha;
-            }
-
-            return dados.shortUrl;
-        }
-
-        form.addEventListener('submit', async event => {
-            event.preventDefault();
-            // Limpa antes, para que o mesmo erro seja anunciado de novo pelo leitor de tela.
-            erro.textContent = '';
-            aviso.textContent = '';
-            input.removeAttribute('aria-invalid');
-            button.disabled = true;
-
-            try {
-                mostrarLink(await encurtar(input.value.trim()));
-            } catch (error) {
-                const conexao = error instanceof TypeError;
-                mostrarErro(conexao ? 'Falha de conexão com o servidor.' : error.message, error.urlInvalida === true);
-            } finally {
-                button.disabled = false;
-            }
-        });
-    </script>
+    <script type="module" src="${STATIC_PATH}main.js"></script>
 </body>
 </html>`;
