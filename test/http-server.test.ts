@@ -39,7 +39,9 @@ test('código antigo em base64url continua redirecionando', async () => {
     const legacyUrl = `http://localhost:${(legacyServer.address() as AddressInfo).port}`;
 
     try {
-        await fetch(legacyUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/antigo' }) });
+        const created = await fetch(legacyUrl + SHORTEN_PATH, { method: 'POST', body: JSON.stringify({ url: 'https://example.com/antigo' }) });
+        assert.equal(created.status, 201);
+
         const redirect = await fetch(`${legacyUrl}/${legacyCode}`, { redirect: 'manual' });
         assert.equal(redirect.status, 302);
         assert.equal(redirect.headers.get('location'), 'https://example.com/antigo');
