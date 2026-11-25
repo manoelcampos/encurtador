@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isPrivateNetworkHost } from '../src/backend/private-network.ts';
+import { normalizedHostname } from '../src/backend/url-validator.ts';
 
-/** Como o serviço recebe o host: pelo `hostname` do `URL`, que já normaliza as formas alternativas. */
-const isPrivateUrl = (url: string) => isPrivateNetworkHost(new URL(url).hostname);
+/** Como o validador passa o host: normalizado, com as formas alternativas já convertidas pelo `URL`. */
+const isPrivateUrl = (url: string) => isPrivateNetworkHost(normalizedHostname(url));
 
 test('recusa localhost e subdomínios .localhost', () => {
     for (const url of ['http://localhost/', 'http://LOCALHOST:8080/', 'http://localhost./', 'http://app.localhost/']) {
@@ -39,10 +40,21 @@ test('recusa IPv6 de loopback, não especificado, ULA, link-local e IPv4 mapeado
     }
 });
 
+test('recusa IPv6 IPv4-compatible (::/96), NAT64 (64:ff9b::/96) e site-local (fec0::/10)', () => {
+    const urls = [
+        'http://[::127.0.0.1]/', 'http://[::8.8.8.8]/', 'http://[64:ff9b::127.0.0.1]/', 'http://[64:ff9b::8.8.8.8]/',
+        'http://[fec0::1]/', 'http://[feff::1]/',
+    ];
+
+    for (const url of urls) {
+        assert.ok(isPrivateUrl(url), url);
+    }
+});
+
 test('aceita domínios e IPs públicos', () => {
     const urls = [
         'https://example.com/', 'http://8.8.8.8/', 'http://172.32.0.1/', 'http://100.128.0.1/', 'http://11.0.0.1/',
-        'http://[2001:4860:4860::8888]/', 'http://[::ffff:8.8.8.8]/', 'https://localhost.example.com/', 'https://mylocalhost/',
+        'http://[2001:4860:4860::8888]/', 'http://[::ffff:8.8.8.8]/', 'http://[::1:0:0:1]/', 'http://[64:ff9c::1]/','https://localhost.example.com/', 'https://mylocalhost/',
     ];
 
     for (const url of urls) {

@@ -70,12 +70,13 @@ O `POST /api/urls` responde `400` com `{"error": "...", "code": "..."}`. O `code
 | `code` | Motivo |
 |--------|--------|
 | `INVALID_URL` | URL ausente, malformada, longa demais ou sem `http`/`https`. |
-| `OWN_DOMAIN` | Mesmo host da `BASE_URL` (minúsculas, sem ponto final, qualquer porta). Evita loops de redirecionamento. |
-| `PRIVATE_NETWORK` | `localhost`, `*.localhost` ou IP de loopback, privado, link-local, `0.0.0.0/8`, CGNAT, `::`, `::1`, `fc00::/7`, `fe80::/10` (inclusive IPv4 mapeado em IPv6 e formas como `2130706433`, que o `URL` normaliza). Só olha o host literal, sem resolver DNS: um domínio público que aponta para IP privado passa, o que é aceitável porque o encurtador só redireciona e nunca acessa a URL. |
-| `MALICIOUS_URL` | Marcada como maliciosa pelo `UrlThreatChecker` injetado no `UrlShortenerService`. |
+| `PRIVATE_NETWORK` | `localhost`, `*.localhost` ou IP de loopback, privado, link-local, `0.0.0.0/8`, CGNAT, `::/96` (inclui `::`, `::1` e IPv4-compatible), NAT64 `64:ff9b::/96`, `fc00::/7`, `fe80::/10`, `fec0::/10` (inclusive IPv4 mapeado em IPv6 e formas como `2130706433`, que o `URL` normaliza). Só olha o host literal, sem resolver DNS: um domínio público que aponta para IP privado passa, o que é aceitável porque o encurtador só redireciona e nunca acessa a URL. Vem antes de `OWN_DOMAIN`, para que `http://localhost:8080` em desenvolvimento dê este código. |
+| `OWN_DOMAIN` | Mesmo host da `BASE_URL` (minúsculas, sem ponto final, qualquer porta, com ou sem `www.`). Evita loops de redirecionamento. Outros subdomínios são aceitos. |
+| `MALICIOUS_URL` | Marcada como possivelmente perigosa pelo `UrlThreatChecker` injetado no `UrlShortenerService`. |
 
 O `UrlThreatChecker` só é consultado depois das outras regras. Com `SAFE_BROWSING_API_KEY` definida, usa o `SafeBrowsingThreatChecker` (Lookup API v4 do Google Safe Browsing, com timeout curto); sem ela, nenhuma URL é considerada maliciosa (`NO_THREAT_CHECKER`).
 Em erro ou timeout do Google, a URL é aceita e o problema vai para o log (fail-open), para o encurtador não parar se o Google cair. Nos testes, use checkers e `fetch` falsos, nunca o serviço real.
+Termos do Safe Browsing: a API é só para uso não comercial (para uso comercial, o Google indica a [Web Risk API](https://cloud.google.com/web-risk)). A mensagem mostrada ao usuário deve ser não categórica ("pode ser perigosa") e trazer a atribuição "Aviso fornecido pelo Google".
 
 ### Limite de requisições por IP
 

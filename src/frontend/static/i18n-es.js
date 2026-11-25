@@ -16,7 +16,7 @@ const es = {
     MENSAGEM_URL_INVALIDA: 'Introduce una URL válida que empiece con http:// o https://.',
     MENSAGEM_URL_PROPRIO_ENCURTADOR: 'Este enlace ya es de este acortador. Introduce la URL original.',
     MENSAGEM_URL_REDE_LOCAL: 'No se pueden acortar direcciones de red local o privada.',
-    MENSAGEM_URL_MALICIOSA: 'Esta URL fue identificada como maliciosa (phishing o malware) y no se puede acortar.',
+    MENSAGEM_URL_MALICIOSA: 'Esta URL puede ser peligrosa y no se puede acortar. Aviso proporcionado por Google.',
     MENSAGEM_CONEXAO: 'Error de conexión con el servidor.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Has hecho demasiadas solicitudes. Espera un poco y vuelve a intentarlo.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Has hecho demasiadas solicitudes. Vuelve a intentarlo en {minutos} min.',

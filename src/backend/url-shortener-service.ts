@@ -49,7 +49,7 @@ export class UrlShortenerService {
         const url = validateUrl(input);
         validateDestination(url, this.#ownHostname);
         if (await this.#threatChecker.isMalicious(url)) {
-            throw new InvalidUrlError('A URL foi identificada como maliciosa (phishing ou malware).', UrlErrorCode.MALICIOUS_URL);
+            throw new InvalidUrlError('Esta URL pode ser perigosa e não pode ser encurtada. Aviso fornecido pelo Google.', UrlErrorCode.MALICIOUS_URL);
         }
 
         return url;

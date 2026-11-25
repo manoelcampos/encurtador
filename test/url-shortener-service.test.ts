@@ -44,19 +44,38 @@ test('falha após muitas colisões seguidas', async () => {
     await assert.rejects(service.shorten('https://dois.com'), /código único/);
 });
 
-test('recusa links do próprio encurtador, com qualquer porta, maiúsculas ou ponto final', async () => {
+test('recusa links do próprio encurtador, com qualquer porta, maiúsculas, ponto final ou www.', async () => {
     const service = createService();
-    for (const url of ['https://encurta.do/abc', 'http://ENCURTA.DO/abc', 'https://encurta.do:443/x', 'https://encurta.do:8080/x', 'https://encurta.do./x']) {
+    const urls = [
+        'https://encurta.do/abc', 'http://ENCURTA.DO/abc', 'https://encurta.do:443/x', 'https://encurta.do:8080/x',
+        'https://encurta.do./x', 'https://www.encurta.do/x', 'https://WWW.Encurta.Do./x',
+    ];
+
+    for (const url of urls) {
         await rejectsWith(service.shorten(url), UrlErrorCode.OWN_DOMAIN);
     }
 });
 
-test('aceita subdomínios do próprio encurtador', async () => {
-    assert.ok(await createService().shorten('https://blog.encurta.do/'));
+test('com www. na BASE_URL, recusa o domínio com e sem www.', async () => {
+    const service = new UrlShortenerService(new SqliteUrlRepository(':memory:'), 'https://www.encurta.do/');
+    for (const url of ['https://encurta.do/x', 'https://www.encurta.do/x']) {
+        await rejectsWith(service.shorten(url), UrlErrorCode.OWN_DOMAIN);
+    }
+});
+
+test('aceita outros subdomínios do próprio encurtador', async () => {
+    const service = createService();
+    assert.ok(await service.shorten('https://blog.encurta.do/'));
+    assert.ok(await service.shorten('https://www.blog.encurta.do/'));
 });
 
 test('recusa endereços de rede local', async () => {
     await rejectsWith(createService().shorten('http://localhost/x'), UrlErrorCode.PRIVATE_NETWORK);
+});
+
+test('rede local tem prioridade sobre o próprio domínio (ex.: BASE_URL de desenvolvimento)', async () => {
+    const service = new UrlShortenerService(new SqliteUrlRepository(':memory:'), 'http://localhost:8080/');
+    await rejectsWith(service.shorten('http://localhost:8080/abc'), UrlErrorCode.PRIVATE_NETWORK);
 });
 
 test('recusa URL maliciosa e aceita as outras', async () => {

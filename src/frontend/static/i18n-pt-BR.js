@@ -15,7 +15,7 @@ const ptBR = {
     MENSAGEM_URL_INVALIDA: 'Informe uma URL válida, começando com http:// ou https://.',
     MENSAGEM_URL_PROPRIO_ENCURTADOR: 'Este link já é do encurtador. Informe a URL original.',
     MENSAGEM_URL_REDE_LOCAL: 'Não é possível encurtar endereços de rede local ou privada.',
-    MENSAGEM_URL_MALICIOSA: 'Esta URL foi identificada como maliciosa (phishing ou malware) e não pode ser encurtada.',
+    MENSAGEM_URL_MALICIOSA: 'Esta URL pode ser perigosa e não pode ser encurtada. Aviso fornecido pelo Google.',
     MENSAGEM_CONEXAO: 'Falha de conexão com o servidor.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Você fez muitas requisições. Aguarde um pouco e tente de novo.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Você fez muitas requisições. Tente de novo em {minutos} min.',

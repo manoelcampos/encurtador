@@ -16,7 +16,7 @@ const en = {
     MENSAGEM_URL_INVALIDA: 'Enter a valid URL starting with http:// or https://.',
     MENSAGEM_URL_PROPRIO_ENCURTADOR: 'This link is already from this shortener. Enter the original URL.',
     MENSAGEM_URL_REDE_LOCAL: 'Local or private network addresses cannot be shortened.',
-    MENSAGEM_URL_MALICIOSA: 'This URL was flagged as malicious (phishing or malware) and cannot be shortened.',
+    MENSAGEM_URL_MALICIOSA: 'This URL may be dangerous and cannot be shortened. Advisory provided by Google.',
     MENSAGEM_CONEXAO: 'Could not connect to the server.',
     MENSAGEM_LIMITE_EXCEDIDO: 'Too many requests. Please wait a moment and try again.',
     MENSAGEM_LIMITE_EXCEDIDO_MINUTOS: 'Too many requests. Try again in {minutos} min.',
