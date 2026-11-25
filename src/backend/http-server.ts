@@ -52,6 +52,7 @@ const ERROR_STATUS: Readonly<Partial<Record<UrlErrorCode, number>>> = {
     [UrlErrorCode.ALIAS_TAKEN]: CONFLICT,
     [UrlErrorCode.ALIAS_UNAVAILABLE]: SERVICE_UNAVAILABLE,
     [UrlErrorCode.LINK_EXPIRED]: GONE,
+    [UrlErrorCode.LINK_EXHAUSTED]: GONE,
     [UrlErrorCode.MANAGE_TOKEN_REQUIRED]: UNAUTHORIZED,
     [UrlErrorCode.INVALID_MANAGE_TOKEN]: FORBIDDEN,
 };
@@ -156,8 +157,10 @@ const shortUrlOf = (code: string, baseUrl: string) => new URL(code, baseUrl).hre
 
 async function shorten(service: UrlShortenerService, baseUrl: string, req: IncomingMessage, res: ServerResponse) {
     const body = parseJson(await readBody(req));
-    const { code, url, expiresAt, manageToken } = await service.shorten(body?.url, body?.alias, body?.expiresIn, body?.removeTracking);
-    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), url, expiresAt, manageToken });
+    const { code, url, expiresAt, maxClicks, manageToken } = await service.shorten(
+        body?.url, body?.alias, body?.expiresIn, body?.removeTracking, body?.maxClicks,
+    );
+    sendJson(res, 201, { code, shortUrl: shortUrlOf(code, baseUrl), url, expiresAt, maxClicks, manageToken });
 }
 
 /** Apaga o link com o token de gestão do header `Authorization: Bearer <token>`. */
@@ -172,7 +175,7 @@ async function deleteLink(service: UrlShortenerService, code: string, req: Incom
 /** Token do header `Authorization: Bearer <token>`, ou undefined se o header faltar ou tiver outro formato. */
 const bearerToken = (header: string | undefined) => header?.match(BEARER_TOKEN)?.[1];
 
-/** Link expirado responde 410 (LINK_EXPIRED): o QR Code levaria a um link que não abre mais. */
+/** Link expirado ou esgotado responde 410 (LINK_EXPIRED ou LINK_EXHAUSTED): o QR Code levaria a um link que não abre mais. Não gasta acesso. */
 async function sendQrCode(service: UrlShortenerService, baseUrl: string, code: string, res: ServerResponse) {
     // O QR Code leva o código gravado (ex.: o apelido em minúsculas), não o texto pedido.
     const { code: storedCode } = requireCode(await service.findActive(code));
@@ -192,7 +195,10 @@ function requireCode<T>(found: T | undefined): T {
     return found;
 }
 
-/** Só GET conta como clique: HEAD é usado por robôs e prévias de link, que não são visitas de pessoas. */
+/**
+ * Só GET conta como clique e gasta acesso do limite: HEAD é usado por robôs e prévias de link, que não são visitas de pessoas
+ * (e gastariam o acesso de um link de uso único).
+ */
 async function redirect(service: UrlShortenerService, code: string, countClick: boolean, res: ServerResponse) {
     const url = countClick ? await service.visit(code) : await service.resolve(code);
     send(res, 302, { Location: requireCode(url) });
@@ -204,7 +210,7 @@ function previewCodeOf(path: string): string | undefined {
     return suffix ? path.slice(1, -suffix.length) : undefined;
 }
 
-/** Mostra o destino sem redirecionar. Não conta clique; link expirado dá 410, como no redirecionamento. */
+/** Mostra o destino sem redirecionar. Não conta clique nem gasta acesso; link expirado ou esgotado dá 410, como no redirecionamento. */
 async function sendPreview(service: UrlShortenerService, code: string, req: IncomingMessage, res: ServerResponse) {
     const url = requireCode(await service.resolve(code));
     const language = previewLanguage(languagesFromHeader(req.headers['accept-language']));
@@ -238,7 +244,9 @@ async function readBody(req: IncomingMessage): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-function parseJson(text: string): { url?: unknown; alias?: unknown; expiresIn?: unknown; removeTracking?: unknown } | undefined {
+function parseJson(
+    text: string,
+): { url?: unknown; alias?: unknown; expiresIn?: unknown; removeTracking?: unknown; maxClicks?: unknown } | undefined {
     try {
         const value = JSON.parse(text);
         return typeof value === 'object' && value !== null ? value : undefined;

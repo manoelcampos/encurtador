@@ -6,7 +6,7 @@ const STATUS_LIMITE_EXCEDIDO = 429;
 const STATUS_CONFLITO = 409;
 const SEGUNDOS_POR_MINUTO = 60;
 const MARCADOR_MINUTOS = '{minutos}';
-const SEGUNDOS_INTEIROS = /^\d+$/;
+const INTEIRO = /^\d+$/;
 /** Marcador do código na rota do QR Code. Deve ser igual ao CODE_PARAM do backend. */
 export const MARCADOR_CODIGO = '{code}';
 const PREFIXO_ARQUIVO_QRCODE = 'qrcode-';
@@ -47,8 +47,10 @@ export const CHAVES_DOS_CODIGOS_DE_ERRO = Object.freeze({
     ALIAS_UNAVAILABLE: 'MENSAGEM_APELIDOS_INDISPONIVEIS',
     INVALID_EXPIRATION: 'MENSAGEM_VALIDADE_INVALIDA',
     INVALID_REMOVE_TRACKING: 'MENSAGEM_RASTREAMENTO_INVALIDO',
-    // Só vem de /:code e do QR Code (410), não do POST; fica aqui para a lista seguir o backend.
+    INVALID_MAX_CLICKS: 'MENSAGEM_LIMITE_ACESSOS_INVALIDO',
+    // Só vêm de /:code, /:code+ e do QR Code (410), não do POST; fica aqui para a lista seguir o backend.
     LINK_EXPIRED: 'MENSAGEM_LINK_EXPIRADO',
+    LINK_EXHAUSTED: 'MENSAGEM_LINK_ESGOTADO',
     // Vêm do DELETE (401 e 403).
     MANAGE_TOKEN_REQUIRED: 'MENSAGEM_TOKEN_AUSENTE',
     INVALID_MANAGE_TOKEN: 'MENSAGEM_TOKEN_INVALIDO',
@@ -59,6 +61,7 @@ const CODIGOS_DO_TOKEN = Object.freeze(['MANAGE_TOKEN_REQUIRED', 'INVALID_MANAGE
 
 const CODIGO_VALIDADE_INVALIDA = 'INVALID_EXPIRATION';
 const CODIGO_RASTREAMENTO_INVALIDO = 'INVALID_REMOVE_TRACKING';
+const CODIGO_LIMITE_INVALIDO = 'INVALID_MAX_CLICKS';
 
 /** Vem com status 503: o servidor desativou os apelidos. */
 const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
@@ -67,7 +70,7 @@ const CODIGO_APELIDOS_INDISPONIVEIS = 'ALIAS_UNAVAILABLE';
 const CODIGOS_DO_APELIDO = Object.freeze(['INVALID_ALIAS', 'ALIAS_TAKEN', CODIGO_APELIDOS_INDISPONIVEIS]);
 
 /** Campos do formulário que a API pode recusar; os valores são os ids dos campos no HTML. */
-export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido', VALIDADE: 'validade', RASTREAMENTO: 'remover-rastreamento' });
+export const CAMPO = Object.freeze({ URL: 'url', APELIDO: 'apelido', VALIDADE: 'validade', RASTREAMENTO: 'remover-rastreamento', LIMITE: 'limite-acessos' });
 
 /**
  * Mensagem traduzida para a URL recusada; a de URL inválida quando o código falta ou é desconhecido.
@@ -108,7 +111,7 @@ export function mensagemDeLimite(retryAfter) {
  */
 export function minutosDeEspera(retryAfter) {
     const valor = retryAfter?.trim() ?? '';
-    if (!SEGUNDOS_INTEIROS.test(valor)) return undefined;
+    if (!INTEIRO.test(valor)) return undefined;
 
     // Mesmo poucos segundos de espera aparecem como 1 minuto.
     return Math.max(1, Math.ceil(Number(valor) / SEGUNDOS_POR_MINUTO));
@@ -135,23 +138,55 @@ export function campoInvalido(status, codigo) {
     if (status === STATUS_CONFLITO || (codigo !== undefined && CODIGOS_DO_APELIDO.includes(codigo))) return CAMPO.APELIDO;
     if (codigo === CODIGO_VALIDADE_INVALIDA) return CAMPO.VALIDADE;
     if (codigo === CODIGO_RASTREAMENTO_INVALIDO) return CAMPO.RASTREAMENTO;
+    if (codigo === CODIGO_LIMITE_INVALIDO) return CAMPO.LIMITE;
     return status === STATUS_URL_INVALIDA ? CAMPO.URL : undefined;
 }
 
 /**
- * Corpo do pedido para encurtar; o apelido e a validade só vão quando preenchidos.
+ * Corpo do pedido para encurtar; o apelido, a validade e o limite de acessos só vão quando preenchidos.
  * @param {string} url
  * @param {string} apelido
  * @param {string} [validade] uma das opções de prazo do backend (`expiresIn`); vazio é sem prazo
  * @param {boolean} [removerRastreamento] remove os parâmetros de rastreamento da URL (`removeTracking`)
+ * @param {string} [limite] limite de acessos digitado (`maxClicks`); vazio é sem limite
  */
-export function corpoDoPedido(url, apelido, validade = '', removerRastreamento = false) {
+export function corpoDoPedido(url, apelido, validade = '', removerRastreamento = false, limite = '') {
+    const maxClicks = limiteDoPedido(limite);
     return {
         url,
         ...(apelido && { alias: apelido }),
         ...(validade && { expiresIn: validade }),
         ...(removerRastreamento && { removeTracking: true }),
+        ...(maxClicks !== undefined && { maxClicks }),
     };
+}
+
+/**
+ * Valor de `maxClicks` para o limite digitado: undefined se vazio, número se for inteiro. Outro texto vai como está,
+ * para a API recusá-lo (INVALID_MAX_CLICKS) e a página marcar o campo, em vez de criar um link sem limite.
+ * @param {string} limite
+ * @returns {number | string | undefined}
+ */
+export function limiteDoPedido(limite) {
+    const valor = limite.trim();
+    if (!valor) return undefined;
+    return INTEIRO.test(valor) ? Number(valor) : valor;
+}
+
+/** Marcador do número de acessos nos textos USOS_*. */
+const MARCADOR_USOS = '{n}';
+
+/**
+ * Texto "Este link funciona N vez(es)" no idioma informado, com o plural do idioma (Intl.PluralRules),
+ * ou vazio se o link não tem limite.
+ * @param {number | null} maxClicks limite de acessos devolvido pela API
+ * @param {string} idioma código BCP 47 do idioma atual
+ */
+export function textoDosUsos(maxClicks, idioma) {
+    if (maxClicks === null) return '';
+
+    const chave = new Intl.PluralRules(idioma).select(maxClicks) === 'one' ? 'USOS_ONE' : 'USOS_OTHER';
+    return texto(chave).replace(MARCADOR_USOS, new Intl.NumberFormat(idioma).format(maxClicks));
 }
 
 /**
@@ -255,6 +290,7 @@ export async function copiarLink({ copiar, linkAtual, avisar, selecionar, aposAt
  * @property {string} shortUrl
  * @property {string} url URL de destino gravada (sem rastreamento, se pedido)
  * @property {string | null} expiresAt data de expiração ISO 8601, ou null se o link não expira
+ * @property {number | null} maxClicks limite de acessos, ou null se o link não tem limite
  * @property {string} manageToken token secreto que permite apagar o link; a API só o devolve na criação
  */
 

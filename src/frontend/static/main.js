@@ -1,6 +1,6 @@
 // Liga as regras da página ao DOM.
 import { apagar, ApiError, encurtar } from './api.js';
-import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, destinoAlterado, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao } from './logic.js';
+import { avisarDeNovo, CAMPO, campoInvalido, copiarLink, destinoAlterado, mensagemDeFalha, qrCodeDoLink, textoDaExpiracao, textoDosUsos } from './logic.js';
 import { definirIdioma, escolherIdioma, texto } from './messages.js';
 import { avisoAoEsquecer, enderecosDoLink, esquecerLink, guardarLink, lerMeusLinks } from './my-links.js';
 import { compartilhar, linksDeCompartilhamento, RESULTADO } from './share.js';
@@ -28,7 +28,9 @@ const input = elemento(CAMPO.URL, HTMLInputElement);
 const apelido = elemento(CAMPO.APELIDO, HTMLInputElement);
 const validade = elemento(CAMPO.VALIDADE, HTMLSelectElement);
 const removerRastreamento = elemento(CAMPO.RASTREAMENTO, HTMLInputElement);
+const limite = elemento(CAMPO.LIMITE, HTMLInputElement);
 const expiracao = elemento('expiracao', HTMLElement);
+const usos = elemento('usos', HTMLElement);
 const destino = elemento('destino', HTMLElement);
 const urlDestino = elemento('url-destino', HTMLElement);
 const dicaPrevia = elemento('dica-previa', HTMLElement);
@@ -61,6 +63,7 @@ function mostrarErro(mensagem, campo) {
     link.removeAttribute('href');
     link.textContent = '';
     expiracao.hidden = true;
+    usos.hidden = true;
     destino.hidden = true;
     dicaPrevia.hidden = true;
     acoes.hidden = true;
@@ -86,6 +89,7 @@ function mostrarLink(linkCurto, urlDigitada) {
     acoes.hidden = false;
     redes.hidden = true;
     mostrarExpiracao(linkCurto);
+    mostrarUsos(linkCurto);
     mostrarDestino(linkCurto.url, urlDigitada);
     mostrarQrCode(linkCurto);
 }
@@ -104,6 +108,12 @@ function mostrarDestino(gravada, digitada) {
 function mostrarExpiracao({ expiresAt }) {
     expiracao.textContent = textoDaExpiracao(expiresAt, document.documentElement.lang);
     expiracao.hidden = !expiresAt;
+}
+
+/** @param {import('./logic.js').LinkCurto} linkCurto */
+function mostrarUsos({ maxClicks }) {
+    usos.textContent = textoDosUsos(maxClicks, document.documentElement.lang);
+    usos.hidden = maxClicks === null;
 }
 
 /** @param {import('./share.js').LinkDeCompartilhamento} opcao */
@@ -192,6 +202,7 @@ form.addEventListener('submit', async event => {
     apelido.removeAttribute('aria-invalid');
     validade.removeAttribute('aria-invalid');
     removerRastreamento.removeAttribute('aria-invalid');
+    limite.removeAttribute('aria-invalid');
     button.disabled = true;
 
     const url = input.value.trim();
@@ -213,7 +224,7 @@ form.addEventListener('submit', async event => {
  */
 async function pedirLink(url) {
     try {
-        return await encurtar(caminhoApi, url, apelido.value.trim(), validade.value, removerRastreamento.checked);
+        return await encurtar(caminhoApi, url, apelido.value.trim(), validade.value, removerRastreamento.checked, limite.value);
     } catch (error) {
         mostrarErro(mensagemDeFalha(error), error instanceof ApiError ? campoInvalido(error.status, error.codigo) : undefined);
         return undefined;
@@ -409,6 +420,7 @@ function traduzirConteudoGerado() {
     if (linkMostrado) {
         qrCode.alt = qrCodeDoLink(rotaQrCode, linkMostrado).alt;
         mostrarExpiracao(linkMostrado);
+        mostrarUsos(linkMostrado);
     }
 
     if (!redes.hidden) criarRedes();

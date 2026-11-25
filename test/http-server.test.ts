@@ -5,6 +5,7 @@ import { after, before, test } from 'node:test';
 import { CODE_PARAM, DOCS_PATH, LINK_PATH, OPENAPI_PATH, PREVIEW_SUFFIX, QRCODE_PATH, SHORTEN_PATH, STATS_PATH } from '../src/backend/api-paths.ts';
 import { createApiServer } from '../src/backend/http-server.ts';
 import { UrlErrorCode } from '../src/backend/invalid-url-error.ts';
+import { MAX_CLICKS_LIMIT } from '../src/backend/max-clicks.ts';
 import { createQrCodeSvg } from '../src/backend/qr-code.ts';
 import { UrlShortenerService } from '../src/backend/url-shortener-service.ts';
 import { NO_CLICK_REPOSITORY } from '../src/data/click-repository.ts';
@@ -93,7 +94,7 @@ test('apelido livre cria o link, que redireciona sem diferenciar maiúsculas', a
     const res = await postAlias('Promo-Natal');
     assert.equal(res.status, 201);
     const { manageToken, ...link } = await res.json();
-    assert.deepEqual(link, { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, url: 'https://example.com/promo', expiresAt: null });
+    assert.deepEqual(link, { code: 'promo-natal', shortUrl: `${BASE_URL}promo-natal`, url: 'https://example.com/promo', expiresAt: null, maxClicks: null });
     assert.equal(typeof manageToken, 'string');
 
     for (const path of ['/promo-natal', '/PROMO-Natal']) {
@@ -519,4 +520,54 @@ test('a pré-visualização de link expirado devolve 410', async () => {
     } finally {
         expiringServer.close();
     }
+});
+
+const createLimited = async (maxClicks: number) => (await post(JSON.stringify({ url: 'https://example.com/unico', maxClicks }))).json();
+const visit = (code: string, method = 'GET') => fetch(`${apiUrl}/${code}`, { method, redirect: 'manual' });
+
+test('maxClicks 1: HEAD e pré-visualização não gastam; o primeiro GET redireciona e o segundo dá 410 LINK_EXHAUSTED', async () => {
+    const { code, maxClicks } = await createLimited(1);
+    assert.equal(maxClicks, 1);
+
+    assert.equal((await visit(code, 'HEAD')).status, 302);
+    assert.equal((await preview(code)).status, 200);
+    assert.equal((await fetch(apiUrl + QRCODE_PATH.replace(CODE_PARAM, code))).status, 200);
+
+    const first = await visit(code);
+    assert.equal(first.status, 302);
+    assert.equal(first.headers.get('location'), 'https://example.com/unico');
+
+    for (const res of [await visit(code), await visit(code, 'HEAD'), await preview(code), await fetch(apiUrl + QRCODE_PATH.replace(CODE_PARAM, code))]) {
+        assert.equal(res.status, 410);
+    }
+
+    const exhausted = await visit(code);
+    assert.equal((await exhausted.json()).code, UrlErrorCode.LINK_EXHAUSTED);
+
+    const stats = await fetch(apiUrl + STATS_PATH.replace(CODE_PARAM, code));
+    assert.equal(stats.status, 200);
+    assert.equal((await stats.json()).totalClicks, 1);
+});
+
+test('GETs simultâneos num link com maxClicks N redirecionam exatamente N vezes', async () => {
+    const limit = 5;
+    const { code } = await createLimited(limit);
+
+    const statuses = await Promise.all(Array.from({ length: 20 }, async () => {
+        const res = await visit(code);
+        await res.body?.cancel();
+        return res.status;
+    }));
+    assert.equal(statuses.filter(status => status === 302).length, limit);
+    assert.equal(statuses.filter(status => status === 410).length, statuses.length - limit);
+});
+
+test('maxClicks inválido dá 400 com INVALID_MAX_CLICKS; sem ele, a resposta traz maxClicks null', async () => {
+    for (const maxClicks of [0, -1, 1.5, '5', 'abc', MAX_CLICKS_LIMIT + 1]) {
+        const res = await post(JSON.stringify({ url: 'https://example.com/', maxClicks }));
+        assert.equal(res.status, 400, String(maxClicks));
+        assert.equal((await res.json()).code, UrlErrorCode.INVALID_MAX_CLICKS);
+    }
+
+    assert.equal((await (await post(JSON.stringify({ url: 'https://example.com/', maxClicks: null }))).json()).maxClicks, null);
 });

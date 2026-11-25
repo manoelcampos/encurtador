@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     avisarDeNovo, avisoDeCopia, copiarLink, linkMudou, mensagemDaApi, mensagemDeFalha, minutosDeEspera, qrCodeDoLink,
-    CAMPO, campoInvalido, corpoDoPedido, destinoAlterado, textoDaExpiracao,
+    CAMPO, campoInvalido, corpoDoPedido, destinoAlterado, limiteDoPedido, textoDaExpiracao, textoDosUsos,
 } from '../src/frontend/static/logic.js';
 import { definirIdioma, IDIOMA_DO_HTML, texto, TRADUCOES } from '../src/frontend/static/messages.js';
 
@@ -235,4 +235,46 @@ test('monta o endereço, o nome do arquivo e o texto alternativo do QR Code', ()
         nomeArquivo: 'qrcode-AbC234xYz.svg',
         alt: `${ALT_QRCODE} https://encurta.do/AbC234xYz`,
     });
+});
+
+test('limiteDoPedido: vazio é sem limite, inteiro vira número e outro texto vai como está para a API recusar', () => {
+    assert.equal(limiteDoPedido(''), undefined);
+    assert.equal(limiteDoPedido('   '), undefined);
+    assert.equal(limiteDoPedido(' 5 '), 5);
+    assert.equal(limiteDoPedido('1'), 1);
+    for (const digitado of ['1.5', '-1', 'abc', '1e3']) {
+        assert.equal(limiteDoPedido(digitado), digitado);
+    }
+});
+
+test('corpoDoPedido só manda maxClicks quando o limite é preenchido', () => {
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '', false, ''), { url: 'https://a.com' });
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '', false, '1'), { url: 'https://a.com', maxClicks: 1 });
+    assert.deepEqual(corpoDoPedido('https://a.com', '', '', false, 'x'), { url: 'https://a.com', maxClicks: 'x' });
+});
+
+test('limite de acessos recusado marca o campo de limite e usa a mensagem traduzida', () => {
+    assert.equal(campoInvalido(400, 'INVALID_MAX_CLICKS'), CAMPO.LIMITE);
+    assert.equal(mensagemDaApi({ error: 'x', code: 'INVALID_MAX_CLICKS' }, 400), texto('MENSAGEM_LIMITE_ACESSOS_INVALIDO'));
+});
+
+test('textoDosUsos usa o plural de cada idioma e fica vazio para link sem limite', () => {
+    const casos = [
+        ['pt-BR', 1, 'Este link funciona 1 vez.'],
+        ['pt-BR', 2, 'Este link funciona 2 vezes.'],
+        ['en', 1, 'This link works 1 time.'],
+        ['en', 1000, 'This link works 1,000 times.'],
+        ['es', 1, 'Este enlace funciona 1 vez.'],
+        ['es', 3, 'Este enlace funciona 3 veces.'],
+    ] as const;
+    try {
+        for (const [idioma, maxClicks, esperado] of casos) {
+            definirIdioma(idioma);
+            assert.equal(textoDosUsos(maxClicks, idioma), esperado);
+        }
+
+        assert.equal(textoDosUsos(null, 'en'), '');
+    } finally {
+        definirIdioma(IDIOMA_DO_HTML);
+    }
 });

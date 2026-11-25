@@ -5,6 +5,7 @@ import { type CodeGenerator, generateRandomCode } from './code-generator.ts';
 import { expirationDate, isExpired } from './expiration.ts';
 import { InvalidUrlError, UrlErrorCode } from './invalid-url-error.ts';
 import { generateManageToken, hashManageToken, manageTokenMatches } from './manage-token.ts';
+import { validateMaxClicks } from './max-clicks.ts';
 import { removeTrackingParams, validateRemoveTracking } from './tracking-params.ts';
 import { NO_THREAT_CHECKER, type UrlThreatChecker } from './url-threat-checker.ts';
 import { normalizedHostname, validateDestination, validateUrl } from './url-validator.ts';
@@ -17,6 +18,8 @@ const DATE_LENGTH = 'YYYY-MM-DD'.length;
 
 /** Data (YYYY-MM-DD) em UTC do instante informado. */
 const utcDate = (instant: Date) => instant.toISOString().slice(0, DATE_LENGTH);
+
+const linkExhaustedError = () => new InvalidUrlError('Este link já atingiu o limite de acessos.', UrlErrorCode.LINK_EXHAUSTED);
 
 export interface UrlShortenerOptions {
     generateCode?: CodeGenerator;
@@ -33,13 +36,19 @@ export interface ShortenedLink {
     expiresAt: string | null;
 }
 
-/** Link encontrado: o código como está gravado, a URL original e a data de expiração. */
+/** Link encontrado: o código como está gravado, a URL original, a data de expiração e os acessos restantes (null: sem limite). */
 export interface StoredLink extends ShortenedLink {
     url: string;
+    remainingClicks: number | null;
 }
 
-/** Link recém-criado, com a URL gravada e o token de gestão, que só é devolvido aqui (o banco guarda só o hash). */
-export interface CreatedLink extends StoredLink {
+/**
+ * Link recém-criado, com a URL gravada, o limite de acessos (null: sem limite) e o token de gestão,
+ * que só é devolvido aqui (o banco guarda só o hash).
+ */
+export interface CreatedLink extends ShortenedLink {
+    url: string;
+    maxClicks: number | null;
     manageToken: string;
 }
 
@@ -48,6 +57,7 @@ interface NewLink {
     url: string;
     expiresAt: string | null;
     manageTokenHash: string;
+    maxClicks: number | null;
 }
 
 export interface ClickStats {
@@ -80,16 +90,20 @@ export class UrlShortenerService {
      * O apelido é gravado em minúsculas; se já existir, lança InvalidUrlError com ALIAS_TAKEN.
      * `expiresInInput` é uma das EXPIRATION_OPTIONS (ou ausente, sem prazo); outro valor lança INVALID_EXPIRATION.
      * `removeTrackingInput` true grava a URL sem parâmetros de rastreamento; outro tipo que não boolean lança INVALID_REMOVE_TRACKING.
+     * `maxClicksInput` limita quantos redirecionamentos o link faz (ausente: sem limite); fora de 1 a MAX_CLICKS_LIMIT lança INVALID_MAX_CLICKS.
      */
-    async shorten(input: unknown, aliasInput?: unknown, expiresInInput?: unknown, removeTrackingInput?: unknown): Promise<CreatedLink> {
+    async shorten(
+        input: unknown, aliasInput?: unknown, expiresInInput?: unknown, removeTrackingInput?: unknown, maxClicksInput?: unknown,
+    ): Promise<CreatedLink> {
         const alias = validateAlias(aliasInput);
         const expiresAt = expirationDate(expiresInInput, this.#now());
         const removeTracking = validateRemoveTracking(removeTrackingInput);
+        const maxClicks = validateMaxClicks(maxClicksInput);
         const url = await this.#validate(input, removeTracking);
         const manageToken = generateManageToken();
-        const link: NewLink = { url, expiresAt, manageTokenHash: hashManageToken(manageToken) };
+        const link: NewLink = { url, expiresAt, manageTokenHash: hashManageToken(manageToken), maxClicks };
         const code = alias === undefined ? await this.#addGenerated(link) : await this.#addAlias(alias, link);
-        return { code, url, expiresAt, manageToken };
+        return { code, url, expiresAt, maxClicks, manageToken };
     }
 
     async #addGenerated(link: NewLink): Promise<string> {
@@ -116,8 +130,8 @@ export class UrlShortenerService {
         return alias;
     }
 
-    #add(code: string, { url, expiresAt, manageTokenHash }: NewLink) {
-        return this.#repository.add(code, url, expiresAt, manageTokenHash);
+    #add(code: string, { url, expiresAt, manageTokenHash, maxClicks }: NewLink) {
+        return this.#repository.add(code, url, expiresAt, manageTokenHash, maxClicks);
     }
 
     /**
@@ -143,16 +157,23 @@ export class UrlShortenerService {
         return this.#repository.delete(code);
     }
 
-    /** URL do código para redirecionar, sem contar clique. Lança LINK_EXPIRED se o link expirou. */
+    /** URL do código, sem contar clique nem gastar acesso. Lança LINK_EXPIRED ou LINK_EXHAUSTED se o link não funciona mais. */
     async resolve(code: string): Promise<string | undefined> {
         return (await this.findActive(code))?.url;
     }
 
-    /** Como o `find`, mas lança InvalidUrlError com LINK_EXPIRED se o link passou do prazo de validade. */
+    /**
+     * Como o `find`, mas lança InvalidUrlError com LINK_EXPIRED se o link passou do prazo de validade,
+     * ou LINK_EXHAUSTED se já teve todos os acessos do limite (o que acontecer primeiro).
+     */
     async findActive(code: string): Promise<StoredLink | undefined> {
         const link = await this.find(code);
         if (link && isExpired(link.expiresAt, this.#now())) {
             throw new InvalidUrlError('Este link expirou.', UrlErrorCode.LINK_EXPIRED);
+        }
+
+        if (link?.remainingClicks === 0) {
+            throw linkExhaustedError();
         }
 
         return link;
@@ -175,15 +196,22 @@ export class UrlShortenerService {
 
     /**
      * Resolve o código para redirecionar e registra o clique. Falha ao registrar não impede o redirecionamento.
-     * Link expirado lança LINK_EXPIRED e não conta clique.
+     * Link expirado lança LINK_EXPIRED e não conta clique. Link com limite gasta um acesso; sem acesso restante,
+     * lança LINK_EXHAUSTED e não conta clique.
      */
     async visit(code: string): Promise<string | undefined> {
         const link = await this.findActive(code);
-        if (link) {
-            await this.#recordClick(link.code);
+        if (!link) {
+            return undefined;
         }
 
-        return link?.url;
+        // A checagem do findActive não basta: outro acesso pode ter gastado o último uso nesse meio-tempo.
+        if (link.remainingClicks !== null && !await this.#repository.consumeClick(link.code)) {
+            throw linkExhaustedError();
+        }
+
+        await this.#recordClick(link.code);
+        return link.url;
     }
 
     async #recordClick(code: string) {
