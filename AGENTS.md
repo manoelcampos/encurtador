@@ -73,7 +73,7 @@ Variáveis de ambiente: a tabela completa fica só no [README](README.md#variáv
 
 - O `Dockerfile` é multi-stage: o estágio de build roda `npm ci` e `npm run build`; o final (`node:<versão>-slim`, fixada) só tem as dependências de produção e o `dist/`, roda como o usuário `node`, guarda o banco no volume `/data` e tem `HEALTHCHECK` com `fetch` em `/api/health` (a imagem slim não tem curl).
 - O `CMD` chama o `node` direto, sem `npm start`, para o `SIGTERM` chegar ao processo.
-- Em `SIGTERM`/`SIGINT`, o `main.ts` fecha o servidor HTTP e depois o banco, o que grava o WAL no arquivo principal (há teste).
+- Em `SIGTERM`/`SIGINT`, o `main.ts` fecha o servidor HTTP e depois o banco, o que grava o WAL no arquivo principal. Um segundo sinal sai na hora com `process.exit(1)`, pois no container o node é o PID 1 e ignoraria o sinal sem handler (há testes).
 
 ### Contagem de cliques
 

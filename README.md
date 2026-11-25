@@ -34,9 +34,9 @@ docker run -d --name encurtador -p 3000:3000 \
 ```
 
 - O banco fica no volume `/data` (`DB_PATH=/data/encurtador.db`). Com o mesmo volume, os links continuam existindo depois de recriar o container.
-- O container roda como o usuário `node` (não root).
+- O container roda como o usuário `node` (uid 1000, não root). Com bind mount (`-v /pasta/do/host:/data`) em vez de volume nomeado, a pasta do host precisa ser gravável por esse uid: `sudo chown 1000:1000 /pasta/do/host`.
 - O `HEALTHCHECK` da imagem chama `GET /api/health`. No Podman, construa com `podman build --format docker`, senão o healthcheck é ignorado.
-- `docker stop` envia `SIGTERM`: a API para de aceitar conexões e fecha o banco, gravando o WAL no arquivo principal.
+- `docker stop` envia `SIGTERM`: a API para de aceitar conexões, espera as que estão abertas e fecha o banco, gravando o WAL no arquivo principal. Um segundo `SIGTERM`/`SIGINT` força a saída na hora.
 - Defina `BASE_URL` com o endereço público, pois é com ela que as URLs curtas são montadas.
 
 ## Variáveis de ambiente
@@ -46,7 +46,7 @@ docker run -d --name encurtador -p 3000:3000 \
 | `PORT` | `3000` | Porta HTTP. |
 | `BASE_URL` | `http://localhost:PORT` | Endereço público do encurtador, usado nas URLs curtas e para recusar links para ele mesmo. |
 | `DB_PATH` | `encurtador.db` (`/data/encurtador.db` no Docker) | Arquivo do banco SQLite. Os arquivos `-wal` e `-shm` ficam ao lado. |
-| `SAFE_BROWSING_API_KEY` | (sem) | Chave do Google Safe Browsing para recusar URLs maliciosas. Sem ela, essa checagem não é feita. |
+| `SAFE_BROWSING_API_KEY` | (sem) | Chave do Google Safe Browsing para recusar URLs maliciosas. Sem ela, essa checagem não é feita. A API é só para uso não comercial; para uso comercial, o Google indica a [Web Risk API](https://cloud.google.com/web-risk). |
 | `CREATE_RATE_LIMIT` | `30` | Criações (`POST /api/urls`) por IP em cada janela. |
 | `CREATE_RATE_WINDOW_SECONDS` | `3600` | Duração da janela de criação, em segundos. |
 | `ACCESS_RATE_LIMIT` | `300` | Outras requisições (redirecionamento, página, QR Code, estatísticas, `DELETE` etc.) por IP em cada janela. `OPTIONS` e `/api/health` não contam. |

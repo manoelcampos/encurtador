@@ -23,8 +23,16 @@ const server = createApiServer(service, baseUrl, limits).listen(port, () => {
 });
 
 // Fechar o banco grava o WAL no arquivo principal. Sem processos pendentes, o Node termina sozinho.
+// No container o node é o PID 1, que ignora sinais sem handler: o segundo sinal força a saída.
+let shuttingDown = false;
 for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.once(signal, () => {
+    process.on(signal, () => {
+        if (shuttingDown) {
+            console.log(`${signal} recebido de novo, saindo sem esperar as conexões.`);
+            process.exit(1);
+        }
+
+        shuttingDown = true;
         console.log(`${signal} recebido, encerrando.`);
         server.close(() => repository.close());
     });
